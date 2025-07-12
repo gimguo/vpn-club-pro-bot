@@ -103,8 +103,8 @@ jobs:
           echo "--> Initializing database via Docker container..."
           docker run --rm \
                     --network vpn-club-pro-telegram-bot_default \
-        -e DATABASE_URL="postgresql+asyncpg://postgres:postgres_password@db:5432/vpn_club" \
-        vpn-club-pro-db-manager
+                    -e DATABASE_URL="postgresql+asyncpg://postgres:postgres_password@db:5432/vpn_club" \
+                    vpn-club-pro-db-manager
           
           # Удаляем временные файлы
           rm -f Dockerfile.db
