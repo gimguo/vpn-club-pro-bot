@@ -4,6 +4,7 @@ from app.keyboards.tariff_keyboard import TariffKeyboard
 from app.services.user_service import UserService
 from app.services.subscription_service import SubscriptionService
 from app.database import AsyncSessionLocal
+from config import settings
 
 router = Router()
 
@@ -66,6 +67,11 @@ async def process_tariff_selection(callback: CallbackQuery):
                 subscription = await subscription_service.create_subscription(user.id, "trial")
                 await user_service.mark_trial_used(user.id)
                 
+                # Планируем уведомление об истечении (импортируем планировщик глобально)
+                from app.main import scheduler
+                if scheduler:
+                    scheduler.schedule_subscription_notification(user.id, subscription.end_date)
+                
                 success_text = """✅ <b>Пробный ключ успешно создан!</b>
 
 🔑 Ваш ключ доступа:"""
@@ -73,9 +79,9 @@ async def process_tariff_selection(callback: CallbackQuery):
                 await callback.message.edit_text(success_text, parse_mode="HTML")
                 await callback.message.answer(f"<code>{subscription.access_url}</code>", parse_mode="HTML")
                 
-                info_text = """📋 <b>Информация о пробном периоде:</b>
-⏰ Срок действия: 3 дня
-📊 Лимит трафика: 10 ГБ
+                info_text = f"""📋 <b>Информация о пробном периоде:</b>
+📊 Лимит трафика: {settings.trial_traffic_gb} ГБ
+⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
 
 📱 Не забудьте скачать приложение и настроить VPN!"""
                 

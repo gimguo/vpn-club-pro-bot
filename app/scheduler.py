@@ -1,16 +1,18 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from app.services.subscription_service import SubscriptionService
 from app.services.user_service import UserService
 from app.database import AsyncSessionLocal
 from config import settings
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class NotificationScheduler:
     def __init__(self, bot):
         self.bot = bot
         self.scheduler = AsyncIOScheduler()
+        self.processed_payments = set()  # Для избежания дублирования
         
     def start(self):
         """Запуск планировщика"""
@@ -41,6 +43,61 @@ class NotificationScheduler:
     def stop(self):
         """Остановка планировщика"""
         self.scheduler.shutdown()
+        
+    def schedule_subscription_notification(self, user_id: int, subscription_end_date: datetime):
+        """Планирование уведомлений об истечении подписки"""
+        try:
+            # Планируем уведомление за 3 дня до окончания
+            notification_date = subscription_end_date - timedelta(days=3)
+            
+            # Планируем только если дата в будущем
+            if notification_date > datetime.now():
+                job_id = f"expiring_notification_{user_id}_{subscription_end_date.timestamp()}"
+                
+                # Удаляем предыдущие уведомления для этого пользователя если есть
+                try:
+                    existing_jobs = [job for job in self.scheduler.get_jobs() if job.id.startswith(f"expiring_notification_{user_id}_")]
+                    for job in existing_jobs:
+                        self.scheduler.remove_job(job.id)
+                except:
+                    pass
+                
+                # Добавляем новое уведомление
+                self.scheduler.add_job(
+                    self.send_expiring_notification,
+                    DateTrigger(run_date=notification_date),
+                    args=[user_id],
+                    id=job_id
+                )
+                
+                print(f"📅 Запланировано уведомление для пользователя {user_id} на {notification_date}")
+                
+        except Exception as e:
+            print(f"Ошибка при планировании уведомления: {e}")
+            
+    async def send_expiring_notification(self, user_id: int):
+        """Отправка уведомления о скором истечении подписки"""
+        try:
+            async with AsyncSessionLocal() as session:
+                user_service = UserService(session)
+                user = await user_service.get_user_by_id(user_id)
+                
+                if user:
+                    text = """⚠️ <b>Срок действия вашего ключа подходит к концу!</b>
+
+⏰ Осталось: 3 дня
+
+Можете продлить подписку или изменить существующий тариф в разделе "Тарифы"."""
+                    
+                    await self.bot.send_message(
+                        user.telegram_id,
+                        text,
+                        parse_mode="HTML"
+                    )
+                    print(f"📤 Отправлено персональное уведомление пользователю {user.telegram_id}")
+                    
+        except Exception as e:
+            print(f"Ошибка отправки персонального уведомления пользователю {user_id}: {e}")
         
     async def check_expiring_subscriptions(self):
         """Проверка подписок, истекающих через 3 дня"""
@@ -184,6 +241,13 @@ class NotificationScheduler:
                             webhook_data = json.load(f)
                         
                         payment_id = webhook_data["payment_id"]
+                        
+                        # Проверяем, не обрабатывался ли этот платеж уже
+                        if payment_id in self.processed_payments:
+                            print(f"💳 Платеж {payment_id} уже был обработан, пропускаем")
+                            os.remove(file_path)
+                            continue
+                        
                         print(f"💳 Обрабатываем webhook для платежа: {payment_id}")
                         
                         # Обновляем статус платежа
@@ -198,6 +262,9 @@ class NotificationScheduler:
                                 payment.tariff_type
                             )
                             
+                            # Планируем уведомление об истечении подписки
+                            self.schedule_subscription_notification(payment.user_id, subscription.end_date)
+                            
                             # Отправляем уведомление пользователю
                             user = await user_service.get_user_by_id(payment.user_id)
                             if user:
@@ -208,9 +275,14 @@ class NotificationScheduler:
 
 🔑 <b>Ваш ключ доступа:</b>"""
                                 
+                                # Добавляем "активна до" для всех подписок
+                                traffic_info = "🚀 Безлимитный трафик"
+                                if payment.tariff_type == "trial":
+                                    traffic_info = f"📊 Лимит: {settings.trial_traffic_gb} ГБ"
+                                
                                 info_text = f"""📋 <b>Информация о подписке:</b>
 📦 Тариф: {tariff_names[payment.tariff_type]}
-🚀 Безлимитный трафик
+{traffic_info}
 ⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
 
 📱 Не забудьте скачать приложение и настроить VPN!"""
@@ -235,6 +307,9 @@ class NotificationScheduler:
                                 )
                                 
                                 print(f"📱 Notification sent to user {user.telegram_id}")
+                            
+                            # Добавляем в список обработанных
+                            self.processed_payments.add(payment_id)
                         
                         # Удаляем обработанный файл
                         os.remove(file_path)

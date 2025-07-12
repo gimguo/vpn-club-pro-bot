@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 import uvicorn
 import json
 import threading
+import os
+from datetime import datetime
 
 from config import settings
 from app.database import init_db
@@ -21,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Глобальная переменная для бота (для доступа из других модулей)
 bot = None
+scheduler = None
 
 # Создаем FastAPI приложение для webhook
 fastapi_app = FastAPI()
@@ -40,72 +43,22 @@ async def yookassa_webhook(request: Request):
             payment_id = payment_data.get("id")
             
             if payment_id:
-                # Обновляем статус платежа в базе данных
-                from app.database import AsyncSessionLocal
-                from app.services.payment_service import PaymentService
-                from app.services.subscription_service import SubscriptionService
-                from app.services.user_service import UserService
+                logger.info(f"💳 Processing payment: {payment_id}")
                 
-                async with AsyncSessionLocal() as session:
-                    payment_service = PaymentService(session)
-                    subscription_service = SubscriptionService(session)
-                    user_service = UserService(session)
-                    
-                    # Обновляем статус платежа
-                    payment = await payment_service.update_payment_status(payment_id, "succeeded")
-                    
-                    if payment:
-                        logger.info(f"✅ Payment {payment_id} marked as succeeded")
-                        
-                        # Создаем подписку автоматически
-                        try:
-                            subscription = await subscription_service.create_subscription(
-                                payment.user_id, 
-                                payment.tariff_type
-                            )
-                            
-                            # Отправляем уведомление пользователю
-                            user = await user_service.get_user_by_id(payment.user_id)
-                            if user:
-                                from app.keyboards.tariff_keyboard import TariffKeyboard
-                                tariff_names = TariffKeyboard.get_tariff_names()
-                                
-                                success_text = """🎉 <b>Оплата прошла успешно!</b>
-
-🔑 <b>Ваш ключ доступа:</b>"""
-                                
-                                info_text = f"""📋 <b>Информация о подписке:</b>
-📦 Тариф: {tariff_names[payment.tariff_type]}
-🚀 Безлимитный трафик
-⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
-
-📱 Не забудьте скачать приложение и настроить VPN!"""
-                                
-                                bot = Bot(token=settings.telegram_bot_token)
-                                # Отправляем подтверждение оплаты
-                                await bot.send_message(
-                                    chat_id=user.telegram_id,
-                                    text=success_text,
-                                    parse_mode="HTML"
-                                )
-                                # Отправляем ключ отдельным сообщением
-                                await bot.send_message(
-                                    chat_id=user.telegram_id,
-                                    text=f"<code>{subscription.access_url}</code>",
-                                    parse_mode="HTML"
-                                )
-                                # Отправляем информацию о подписке
-                                await bot.send_message(
-                                    chat_id=user.telegram_id,
-                                    text=info_text,
-                                    parse_mode="HTML"
-                                )
-                                await bot.session.close()
-                                
-                                logger.info(f"📱 Notification sent to user {user.telegram_id}")
-                            
-                        except Exception as e:
-                            logger.error(f"❌ Error creating subscription: {e}")
+                # Записываем webhook в файл для обработки планировщиком
+                webhook_data = {
+                    "payment_id": payment_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # Создаем папку для webhooks если её нет
+                os.makedirs("/tmp/webhooks", exist_ok=True)
+                
+                # Записываем webhook в файл
+                with open(f"/tmp/webhooks/payment_{payment_id}.json", "w") as f:
+                    json.dump(webhook_data, f)
+                
+                logger.info(f"📝 Webhook saved to file for processing by scheduler")
                     
         return JSONResponse(content={"status": "ok"})
         
@@ -120,7 +73,7 @@ async def root():
 
 async def run_bot():
     """Запуск Telegram бота"""
-    global bot
+    global bot, scheduler
     
     # Инициализация базы данных
     await init_db()
@@ -150,7 +103,8 @@ async def run_bot():
         await dp.start_polling(bot)
     finally:
         await bot.session.close()
-        scheduler.stop()
+        if scheduler:
+            scheduler.stop()
 
 def run_fastapi():
     """Запуск FastAPI сервера"""

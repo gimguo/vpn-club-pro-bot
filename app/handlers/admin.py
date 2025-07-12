@@ -350,6 +350,11 @@ async def give_key(message: Message):
             await message.answer("🔄 Создаю ключ...")
             subscription = await subscription_service.create_subscription(user.id, tariff_type)
             
+            # Планируем уведомление об истечении
+            from app.main import scheduler
+            if scheduler:
+                scheduler.schedule_subscription_notification(user.id, subscription.end_date)
+            
             # Отправляем уведомление пользователю
             tariff_names = {
                 "trial": "Пробный (3 дня, 10 ГБ)",
@@ -362,7 +367,7 @@ async def give_key(message: Message):
             user_text = f"""🎉 <b>Вам выдан VPN ключ!</b>
 
 📦 Тариф: {tariff_names[tariff_type]}
-⏰ Действует до: {subscription.end_date.strftime('%d.%m.%Y')}
+⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
 
 🔑 <b>Ваш ключ:</b>
 <code>{subscription.access_url}</code>

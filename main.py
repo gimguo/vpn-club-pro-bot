@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
 import json
+import os
 
 from config import settings
 from app.database import init_db
@@ -48,8 +49,7 @@ async def yookassa_webhook(request: Request):
             if payment_id:
                 logger.info(f"💳 Processing payment: {payment_id}")
                 
-                # Записываем webhook в файл для обработки основным процессом
-                import os
+                # Записываем webhook в файл для обработки планировщиком
                 webhook_data = {
                     "payment_id": payment_id,
                     "timestamp": datetime.now().isoformat()
@@ -62,15 +62,13 @@ async def yookassa_webhook(request: Request):
                 with open(f"/tmp/webhooks/payment_{payment_id}.json", "w") as f:
                     json.dump(webhook_data, f)
                 
-                logger.info(f"📝 Webhook saved to file for processing")
+                logger.info(f"📝 Webhook saved to file for processing by scheduler")
                     
         return JSONResponse(content={"status": "ok"})
         
     except Exception as e:
         logger.error(f"❌ Webhook error: {e}")
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=400)
-
-
 
 @fastapi_app.get("/")
 async def root():

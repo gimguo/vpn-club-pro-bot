@@ -122,6 +122,11 @@ async def check_payment_status(callback: CallbackQuery):
                     latest_payment.tariff_type
                 )
                 
+                # Планируем уведомление об истечении
+                from app.main import scheduler
+                if scheduler:
+                    scheduler.schedule_subscription_notification(user.id, subscription.end_date)
+                
                 success_text = """🎉 <b>Оплата прошла успешно!</b>
 
 🔑 <b>Ваш ключ доступа:</b>"""
