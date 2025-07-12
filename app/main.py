@@ -100,7 +100,7 @@ async def run_bot():
     
     try:
         logger.info("Запуск в режиме polling...")
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, allowed_updates=['message', 'callback_query', 'successful_payment'])
     finally:
         await bot.session.close()
         if scheduler:

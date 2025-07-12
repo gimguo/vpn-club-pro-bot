@@ -7,6 +7,11 @@ import json
 import hmac
 import hashlib
 from config import settings
+from aiogram import Bot, Dispatcher
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from app.handlers import register_all_handlers
 
 async def yookassa_webhook(request):
     """Обработчик webhook от YooKassa"""
@@ -91,6 +96,31 @@ def verify_signature(body: bytes, signature: str) -> bool:
 
 def create_webhook_app():
     """Создание веб-приложения для webhook"""
+    # Создаем бота
+    bot = Bot(
+        token=settings.telegram_bot_token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
+    
+    # Создаем диспетчер
+    dp = Dispatcher()
+    
+    # Регистрируем обработчики
+    register_all_handlers(dp)
+    
+    # Создаем веб-приложение
     app = web.Application()
+    
+    # Добавляем обработчики
     app.router.add_post('/webhook/yookassa', yookassa_webhook)
+    
+    # Настраиваем webhook для Telegram
+    SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        allowed_updates=['message', 'callback_query', 'successful_payment']
+    ).register(app, path="/webhook/telegram")
+    
+    setup_application(app, dp, bot=bot)
+    
     return app 

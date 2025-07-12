@@ -144,7 +144,7 @@ async def main():
         else:
             # Polling режим для Telegram
             logger.info("Запуск в режиме polling...")
-            await dp.start_polling(bot)
+            await dp.start_polling(bot, allowed_updates=['message', 'callback_query', 'successful_payment'])
             
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
