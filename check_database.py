@@ -101,11 +101,12 @@ def check_database():
                 print(f"   - {table_name}: ОШИБКА - {e}")
         print()
         
-        # Проверка последних telegram_payments
+        # Проверка последних telegram_payments с правильными полями
         print("4. ПОСЛЕДНИЕ 5 ЗАПИСЕЙ telegram_payments:")
         try:
             cursor.execute("""
-                SELECT id, user_id, tariff_id, amount_stars, status, created_at, telegram_payment_charge_id
+                SELECT id, user_id, tariff_type, amount, currency, status, created_at, 
+                       telegram_payment_charge_id, payment_type
                 FROM telegram_payments
                 ORDER BY created_at DESC
                 LIMIT 5;
@@ -113,7 +114,7 @@ def check_database():
             payments = cursor.fetchall()
             if payments:
                 for payment in payments:
-                    print(f"   - ID: {payment['id']}, User: {payment['user_id']}, Tariff: {payment['tariff_id']}, Stars: {payment['amount_stars']}, Status: {payment['status']}, Charge ID: {payment['telegram_payment_charge_id']}, Created: {payment['created_at']}")
+                    print(f"   - ID: {payment['id']}, User: {payment['user_id']}, Tariff: {payment['tariff_type']}, Amount: {payment['amount']}, Currency: {payment['currency']}, Status: {payment['status']}, Charge ID: {payment['telegram_payment_charge_id']}, Payment Type: {payment['payment_type']}, Created: {payment['created_at']}")
             else:
                 print("   НЕТ ЗАПИСЕЙ")
         except Exception as e:
@@ -143,7 +144,7 @@ def check_database():
         print("6. ПОСЛЕДНИЕ 5 ПОДПИСОК:")
         try:
             cursor.execute("""
-                SELECT id, user_id, tariff_id, status, expires_at, created_at
+                SELECT id, user_id, status, expires_at, created_at
                 FROM subscriptions
                 ORDER BY created_at DESC
                 LIMIT 5;
@@ -151,7 +152,7 @@ def check_database():
             subscriptions = cursor.fetchall()
             if subscriptions:
                 for sub in subscriptions:
-                    print(f"   - ID: {sub['id']}, User: {sub['user_id']}, Tariff: {sub['tariff_id']}, Status: {sub['status']}, Expires: {sub['expires_at']}, Created: {sub['created_at']}")
+                    print(f"   - ID: {sub['id']}, User: {sub['user_id']}, Status: {sub['status']}, Expires: {sub['expires_at']}, Created: {sub['created_at']}")
             else:
                 print("   НЕТ ЗАПИСЕЙ")
         except Exception as e:
@@ -161,10 +162,31 @@ def check_database():
         # Проверка переменных окружения
         print("7. ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ:")
         print(f"   - TELEGRAM_BOT_TOKEN: {'УСТАНОВЛЕН' if os.getenv('TELEGRAM_BOT_TOKEN') else 'НЕ УСТАНОВЛЕН'}")
-        print(f"   - TELEGRAM_PAYMENT_PROVIDER_TOKEN: {'УСТАНОВЛЕН' if os.getenv('TELEGRAM_PAYMENT_PROVIDER_TOKEN') else 'НЕ УСТАНОВЛЕН'}")
+        print(f"   - TELEGRAM_PAYMENT_PROVIDER_TOKEN: {'УСТАНОВЛЕН (' + str(os.getenv('TELEGRAM_PAYMENT_PROVIDER_TOKEN')) + ')' if os.getenv('TELEGRAM_PAYMENT_PROVIDER_TOKEN') is not None else 'НЕ УСТАНОВЛЕН'}")
         print(f"   - DATABASE_URL: {'УСТАНОВЛЕН' if os.getenv('DATABASE_URL') else 'НЕ УСТАНОВЛЕН'}")
         print(f"   - ADMIN_ID: {os.getenv('ADMIN_ID', 'НЕ УСТАНОВЛЕН')}")
         print(f"   - DEBUG: {os.getenv('DEBUG', 'НЕ УСТАНОВЛЕН')}")
+        print()
+        
+        # Проверка Stars платежей
+        print("8. ПРОВЕРКА STARS ПЛАТЕЖЕЙ:")
+        try:
+            cursor.execute("""
+                SELECT id, user_id, tariff_type, amount, currency, status, payment_type, created_at
+                FROM telegram_payments
+                WHERE payment_type = 'stars'
+                ORDER BY created_at DESC
+                LIMIT 10;
+            """)
+            stars_payments = cursor.fetchall()
+            if stars_payments:
+                print(f"   Найдено {len(stars_payments)} Stars платежей:")
+                for payment in stars_payments:
+                    print(f"   - ID: {payment['id']}, User: {payment['user_id']}, Tariff: {payment['tariff_type']}, Amount: {payment['amount']}, Status: {payment['status']}, Created: {payment['created_at']}")
+            else:
+                print("   НЕТ STARS ПЛАТЕЖЕЙ")
+        except Exception as e:
+            print(f"   ОШИБКА: {e}")
         print()
         
         cursor.close()
