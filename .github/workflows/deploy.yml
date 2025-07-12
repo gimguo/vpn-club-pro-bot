@@ -1,0 +1,164 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  init-database:
+    name: Initialize Database
+    runs-on: [self-hosted, Linux, X64]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Database
+        run: |
+          set -e
+          
+          # Путь к проекту на сервере
+          DEPLOY_PATH="/home/deployer/vpn-club-pro-telegram-bot"
+          
+          echo "🗄️ Database initialization job started"
+          echo "======================================"
+          
+          # Создаем директорию и синхронизируем файлы для доступа к скриптам БД
+          echo "--> Creating deployment directory..."
+          mkdir -p $DEPLOY_PATH
+          
+          echo "--> Syncing database files..."
+          rsync -av --delete ./migrations/ $DEPLOY_PATH/migrations/
+          rsync -av ./manage_db.py $DEPLOY_PATH/
+          rsync -av ./config.py $DEPLOY_PATH/
+          rsync -av ./requirements-db.txt $DEPLOY_PATH/
+          rsync -av ./app/ $DEPLOY_PATH/app/
+          
+          cd $DEPLOY_PATH
+          
+          # Настройка .env файла для подключения к БД
+          echo "--> Setting up .env file for database connection..."
+          if [ ! -f .env ]; then
+            cp demo.env .env
+          fi
+          
+          # Запускаем только PostgreSQL контейнер для инициализации
+          echo "--> Starting PostgreSQL container..."
+          docker compose up -d db
+          
+          # Ждем готовности PostgreSQL
+          echo "--> Waiting for PostgreSQL to be ready..."
+          sleep 15
+          
+          # Проверяем доступность базы данных
+          MAX_RETRIES=30
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if docker compose exec db pg_isready -U postgres -d vpn_club; then
+              echo "✅ PostgreSQL is ready"
+              break
+            else
+              echo "⏳ Waiting for PostgreSQL... ($((RETRY_COUNT + 1))/$MAX_RETRIES)"
+              sleep 2
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+            fi
+          done
+          
+          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+            echo "❌ Failed to connect to PostgreSQL"
+            exit 1
+          fi
+          
+          # Создаем временный Dockerfile для работы с БД
+          echo "--> Creating temporary Dockerfile for database management..."
+          cat > Dockerfile.db << 'EOF'
+          FROM python:3.10-slim
+          
+          # Установка системных зависимостей
+          RUN apt-get update && apt-get install -y \
+              libpq-dev gcc \
+              && rm -rf /var/lib/apt/lists/*
+          
+          WORKDIR /app
+          
+          # Установка только необходимых зависимостей для БД
+          COPY requirements-db.txt .
+          RUN pip install --no-cache-dir -r requirements-db.txt
+          
+          # Копирование файлов для работы с БД
+          COPY manage_db.py config.py ./
+          COPY app/ ./app/
+          COPY migrations/ ./migrations/
+          
+          CMD ["python", "manage_db.py"]
+          EOF
+          
+          # Собираем образ для управления БД
+          echo "--> Building database management image..."
+          docker build -f Dockerfile.db -t vpn-club-pro-db-manager .
+          
+          # Запускаем инициализацию базы данных внутри Docker контейнера
+          echo "--> Initializing database via Docker container..."
+          docker run --rm \
+                    --network vpn-club-pro-telegram-bot_default \
+        -e DATABASE_URL="postgresql+asyncpg://postgres:postgres_password@db:5432/vpn_club" \
+        vpn-club-pro-db-manager
+          
+          # Удаляем временные файлы
+          rm -f Dockerfile.db
+          
+          echo "✅ Database initialization completed"
+
+  deploy:
+    name: Deploy Application
+    runs-on: [self-hosted, Linux, X64]
+    needs: init-database  # Зависимость от джобы инициализации БД
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub (manual)
+        run: echo "dckr_pat_cYU8Koka76xQ6q7X4EiJ9Hul_lU" | docker login -u "gimguo" --password-stdin
+
+      - name: Deploy Application
+        run: |
+          set -e
+          
+          # Укажите здесь путь, где будет жить ваш проект на сервере
+          DEPLOY_PATH="/home/deployer/vpn-club-pro-telegram-bot"
+          
+          echo "🚀 Application deployment started"
+          echo "================================="
+          
+          echo "--> Creating deployment directory..."
+          mkdir -p $DEPLOY_PATH
+          
+          echo "--> Cleaning nginx logs before sync..."
+          # Очищаем логи nginx через Docker контейнер с правами root
+          if [ -d "$DEPLOY_PATH/logs/nginx" ]; then
+            docker run --rm -v $DEPLOY_PATH/logs:/logs alpine sh -c 'rm -rf /logs/nginx && mkdir -p /logs/nginx && chown -R 1000:1000 /logs'
+          fi
+          
+          echo "--> Syncing files to deployment directory..."
+          # rsync -av --delete синхронизирует все изменения, включая удаления
+          rsync -av --delete ./ $DEPLOY_PATH/
+          
+          echo "--> Changing to deployment directory..."
+          cd $DEPLOY_PATH
+          
+          echo "--> Setting up .env file (if not exists)..."
+          if [ ! -f .env ]; then
+            cp demo.env .env
+          fi
+          
+          echo "--> Building and restarting Docker containers..."
+          # БД уже запущена из предыдущей джобы, поэтому просто пересобираем и запускаем все
+          docker compose up -d --build
+          
+          echo "--> Cleaning up old Docker images..."
+          docker image prune -af
+          
+          echo "✅ Deployment successful!" 

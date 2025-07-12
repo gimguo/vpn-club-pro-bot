@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    pull_policy: never
+    environment:
+      POSTGRES_DB: vpn_club
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  redis:
+    image: cgr.dev/chainguard/redis:latest
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  bot:
+    build: .
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      ADMIN_ID: ${ADMIN_ID:-7909062876}
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres_password@db:5432/vpn_club
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY}
+      OUTLINE_API_URL: ${OUTLINE_SERVER_1_URL}
+      OUTLINE_CERT_SHA256: ${OUTLINE_CERT_SHA256:-}
+      TRIAL_PRICE: 0
+      MONTHLY_PRICE: 150
+      QUARTERLY_PRICE: 350
+      HALF_YEARLY_PRICE: 650
+      YEARLY_PRICE: 1200
+      REDIS_URL: redis://redis:6379
+      # WEBHOOK_URL: http://5.129.196.245:8000/webhook/yookassa
+      BOT_USERNAME: ${BOT_USERNAME:-vpn_club_pro_bot}
+      DEBUG: ${DEBUG:-False}
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "9000:9000"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - bot
+    restart: unless-stopped
+
+volumes:
+  postgres_data: 

@@ -1,0 +1,14 @@
+{
+  "_info": "Database of blog posts with their message IDs",
+  "_channel": "@vpn_club_pro_blog",
+  "_updated": "2025-06-28",
+  "_auto_updated": true,
+  "_links_corrected": true,
+  "_final_version": true,
+  "welcome": 23,
+  "mobile_instruction": 24,
+  "desktop_instruction": 25,
+  "updates": 26,
+  "pricing": 27,
+  "security": 28
+}
