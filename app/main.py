@@ -70,12 +70,11 @@ async def yookassa_webhook(request: Request):
                                 from app.keyboards.tariff_keyboard import TariffKeyboard
                                 tariff_names = TariffKeyboard.get_tariff_names()
                                 
-                                success_text = f"""🎉 <b>Оплата прошла успешно!</b>
+                                success_text = """🎉 <b>Оплата прошла успешно!</b>
 
-🔑 Ваш ключ доступа:
-<code>{subscription.access_url}</code>
-
-📋 <b>Информация о подписке:</b>
+🔑 <b>Ваш ключ доступа:</b>"""
+                                
+                                info_text = f"""📋 <b>Информация о подписке:</b>
 📦 Тариф: {tariff_names[payment.tariff_type]}
 🚀 Безлимитный трафик
 ⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
@@ -83,9 +82,22 @@ async def yookassa_webhook(request: Request):
 📱 Не забудьте скачать приложение и настроить VPN!"""
                                 
                                 bot = Bot(token=settings.telegram_bot_token)
+                                # Отправляем подтверждение оплаты
                                 await bot.send_message(
                                     chat_id=user.telegram_id,
                                     text=success_text,
+                                    parse_mode="HTML"
+                                )
+                                # Отправляем ключ отдельным сообщением
+                                await bot.send_message(
+                                    chat_id=user.telegram_id,
+                                    text=f"<code>{subscription.access_url}</code>",
+                                    parse_mode="HTML"
+                                )
+                                # Отправляем информацию о подписке
+                                await bot.send_message(
+                                    chat_id=user.telegram_id,
+                                    text=info_text,
                                     parse_mode="HTML"
                                 )
                                 await bot.session.close()

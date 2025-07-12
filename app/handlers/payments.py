@@ -122,9 +122,9 @@ async def check_payment_status(callback: CallbackQuery):
                     latest_payment.tariff_type
                 )
                 
-                success_text = """✅ <b>Оплата прошла успешно, спасибо!</b>
+                success_text = """🎉 <b>Оплата прошла успешно!</b>
 
-🔑 Ваш ключ доступа:"""
+🔑 <b>Ваш ключ доступа:</b>"""
                 
                 await callback.message.edit_text(success_text, parse_mode="HTML")
                 await callback.message.answer(f"<code>{subscription.access_url}</code>", parse_mode="HTML")

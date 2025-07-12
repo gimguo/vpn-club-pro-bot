@@ -204,21 +204,34 @@ class NotificationScheduler:
                                 from app.keyboards.tariff_keyboard import TariffKeyboard
                                 tariff_names = TariffKeyboard.get_tariff_names()
                                 
-                                success_text = f"""🎉 <b>Оплата прошла успешно!</b>
+                                success_text = """🎉 <b>Оплата прошла успешно!</b>
 
-🔑 Ваш ключ доступа:
-<code>{subscription.access_url}</code>
-
-📋 <b>Информация о подписке:</b>
+🔑 <b>Ваш ключ доступа:</b>"""
+                                
+                                info_text = f"""📋 <b>Информация о подписке:</b>
 📦 Тариф: {tariff_names[payment.tariff_type]}
 🚀 Безлимитный трафик
 ⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
 
 📱 Не забудьте скачать приложение и настроить VPN!"""
                                 
+                                # Отправляем подтверждение оплаты
                                 await self.bot.send_message(
                                     chat_id=user.telegram_id,
-                                    text=success_text
+                                    text=success_text,
+                                    parse_mode="HTML"
+                                )
+                                # Отправляем ключ отдельным сообщением
+                                await self.bot.send_message(
+                                    chat_id=user.telegram_id,
+                                    text=f"<code>{subscription.access_url}</code>",
+                                    parse_mode="HTML"
+                                )
+                                # Отправляем информацию о подписке
+                                await self.bot.send_message(
+                                    chat_id=user.telegram_id,
+                                    text=info_text,
+                                    parse_mode="HTML"
                                 )
                                 
                                 print(f"📱 Notification sent to user {user.telegram_id}")
