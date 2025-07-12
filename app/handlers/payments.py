@@ -121,14 +121,13 @@ async def process_stars_payment(callback: CallbackQuery):
             last_name=callback.from_user.last_name
         )
         
-        # Получаем цену тарифа в USD
-        amount = telegram_payment_service.get_tariff_price(tariff_type)
-        stars_amount = int(amount * 1000)
+        # Получаем цену тарифа в Stars
+        stars_amount = telegram_payment_service.get_tariff_price_stars(tariff_type)
         
         text = f"""⭐ <b>Оплата через Telegram Stars</b>
 
 📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(tariff_type, 'Неизвестный')}
-💰 <b>Стоимость:</b> {stars_amount} ⭐ Stars (${amount:.2f})
+💰 <b>Стоимость:</b> {stars_amount} ⭐ Stars
 
 ✨ <b>Преимущества:</b>
 • Мгновенная оплата
@@ -137,7 +136,7 @@ async def process_stars_payment(callback: CallbackQuery):
         
         await callback.message.edit_text(
             text,
-            reply_markup=PaymentKeyboard.get_stars_payment_confirm(tariff_type, amount),
+            reply_markup=PaymentKeyboard.get_stars_payment_confirm(tariff_type),
             parse_mode="HTML"
         )
 
@@ -156,13 +155,9 @@ async def confirm_stars_payment(callback: CallbackQuery):
             return
         
         try:
-            # Получаем цену тарифа
-            amount = telegram_payment_service.get_tariff_price(tariff_type)
-            
             # Создаем платеж
             payment = await telegram_payment_service.create_stars_payment(
                 user_id=user.id,
-                amount=amount,
                 tariff_type=tariff_type
             )
             

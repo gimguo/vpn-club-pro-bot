@@ -16,10 +16,10 @@ class TelegramPaymentService:
         self.session = session
         self.bot = bot
 
-    async def create_stars_payment(self, user_id: int, amount: Decimal, tariff_type: str) -> TelegramPayment:
+    async def create_stars_payment(self, user_id: int, tariff_type: str) -> TelegramPayment:
         """Создание платежа через Telegram Stars"""
-        # Конвертируем USD в Stars (1 USD = 1000 Stars примерно)
-        stars_amount = int(amount * 1000)
+        # Получаем цену в Stars для тарифа
+        stars_amount = self.get_tariff_price_stars(tariff_type)
         
         # Создаем payload для идентификации платежа
         payload = f"stars_payment_{user_id}_{tariff_type}_{uuid.uuid4().hex[:8]}"
@@ -28,7 +28,7 @@ class TelegramPaymentService:
         payment = TelegramPayment(
             user_id=user_id,
             telegram_payment_charge_id=payload,  # Временно, обновится после оплаты
-            amount=amount,
+            amount=Decimal(str(stars_amount)),  # Сохраняем количество Stars
             currency="XTR",  # Telegram Stars
             tariff_type=tariff_type,
             payment_type="stars",
@@ -81,8 +81,8 @@ class TelegramPaymentService:
             title = f"VPN Club Pro - {tariff_names.get(payment.tariff_type, 'Подписка')}"
             description = f"Оплата подписки через Telegram Stars"
             
-            # Конвертируем в Stars
-            stars_amount = int(payment.amount * 1000)
+            # Используем сохраненную цену в Stars из payment.amount
+            stars_amount = int(payment.amount)
             
             # Отправляем invoice
             await self.bot.send_invoice(
@@ -207,6 +207,23 @@ class TelegramPaymentService:
             "yearly": Decimal("49.99")
         }
         return prices.get(tariff_type, Decimal("0"))
+
+    def get_tariff_price_stars(self, tariff_type: str) -> int:
+        """Получение цены тарифа в Stars (в 3 раза меньше рублевых цен)"""
+        # Цены в Stars (рублевые цены / 3)
+        # Пробный: 150₽ / 3 = 50⭐
+        # Месяц: 150₽ / 3 = 50⭐
+        # 3 месяца: 350₽ / 3 = 117⭐
+        # 6 месяцев: 650₽ / 3 = 217⭐
+        # 12 месяцев: 1200₽ / 3 = 400⭐
+        prices = {
+            "trial": 50,
+            "monthly": 50,
+            "quarterly": 117,
+            "half_yearly": 217,
+            "yearly": 400
+        }
+        return prices.get(tariff_type, 0)
 
     async def update_payment_status(self, payment_id: int, status: str) -> Optional[TelegramPayment]:
         """Обновление статуса платежа"""

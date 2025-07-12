@@ -5,22 +5,52 @@ class PaymentKeyboard:
     @staticmethod
     def get_payment_methods(tariff_type: str):
         """Клавиатура для выбора способа оплаты"""
+        # Цены в Stars (рублевые цены / 3)
+        stars_prices = {
+            "trial": 50,
+            "monthly": 50,
+            "quarterly": 117,
+            "half_yearly": 217,
+            "yearly": 400
+        }
+        
+        # Рублевые цены
+        rub_prices = {
+            "trial": 150,
+            "monthly": 150,
+            "quarterly": 350,
+            "half_yearly": 650,
+            "yearly": 1200
+        }
+        
+        stars_price = stars_prices.get(tariff_type, 0)
+        rub_price = rub_prices.get(tariff_type, 0)
+        
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="⭐ Telegram Stars", callback_data=f"payment_stars_{tariff_type}")],
+                [InlineKeyboardButton(text=f"⭐ Telegram Stars ({stars_price}⭐)", callback_data=f"payment_stars_{tariff_type}")],
                 [InlineKeyboardButton(text="💳 Банковская карта", callback_data=f"payment_card_{tariff_type}")],
-                [InlineKeyboardButton(text="🥇 YooKassa (рубли)", callback_data=f"payment_yookassa_{tariff_type}")],
-                [InlineKeyboardButton(text="🐕 DOGE", callback_data=f"payment_doge_{tariff_type}")],
-                [InlineKeyboardButton(text="🔴 TRX", callback_data=f"payment_trx_{tariff_type}")],
+                [InlineKeyboardButton(text=f"🥇 YooKassa ({rub_price}₽)", callback_data=f"payment_yookassa_{tariff_type}")],
+                [InlineKeyboardButton(text="🐕 DOGE (скоро)", callback_data=f"payment_doge_{tariff_type}")],
+                [InlineKeyboardButton(text="🔴 TRX (скоро)", callback_data=f"payment_trx_{tariff_type}")],
                 [InlineKeyboardButton(text="⬅️ Назад к тарифам", callback_data="back_to_tariffs")]
             ]
         )
         return keyboard
 
     @staticmethod
-    def get_stars_payment_confirm(tariff_type: str, amount: Decimal):
+    def get_stars_payment_confirm(tariff_type: str, amount: Decimal = None):
         """Подтверждение оплаты Stars"""
-        stars_amount = int(amount * 1000)
+        # Цены в Stars (рублевые цены / 3)
+        stars_prices = {
+            "trial": 50,
+            "monthly": 50,
+            "quarterly": 117,
+            "half_yearly": 217,
+            "yearly": 400
+        }
+        
+        stars_amount = stars_prices.get(tariff_type, 0)
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text=f"⭐ Оплатить {stars_amount} Stars", callback_data=f"confirm_stars_{tariff_type}")],
