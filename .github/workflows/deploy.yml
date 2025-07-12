@@ -33,6 +33,8 @@ jobs:
           rsync -av ./manage_db.py $DEPLOY_PATH/
           rsync -av ./config.py $DEPLOY_PATH/
           rsync -av ./requirements-db.txt $DEPLOY_PATH/
+          rsync -av ./demo.env $DEPLOY_PATH/
+          rsync -av ./docker-compose.yml $DEPLOY_PATH/
           rsync -av ./app/ $DEPLOY_PATH/app/
           
           cd $DEPLOY_PATH
