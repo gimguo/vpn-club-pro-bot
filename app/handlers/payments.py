@@ -345,8 +345,11 @@ async def process_successful_payment(message: Message):
     """Обработка успешного платежа через Telegram Payments"""
     try:
         payment_info = message.successful_payment
-        logger.info(f"🎉 Received successful payment from user {message.from_user.id}")
-        logger.info(f"💰 Payment details: {payment_info.total_amount} {payment_info.currency}, payload: {payment_info.invoice_payload}")
+        logger.info(f"🎉 [SUCCESS_PAYMENT] Received successful payment from user {message.from_user.id}")
+        logger.info(f"💰 [SUCCESS_PAYMENT] Payment details: {payment_info.total_amount} {payment_info.currency}")
+        logger.info(f"📦 [SUCCESS_PAYMENT] Payload: {payment_info.invoice_payload}")
+        logger.info(f"🏷️ [SUCCESS_PAYMENT] Telegram charge ID: {payment_info.telegram_payment_charge_id}")
+        logger.info(f"🔑 [SUCCESS_PAYMENT] Provider charge ID: {payment_info.provider_payment_charge_id}")
         
         async with AsyncSessionLocal() as session:
             user_service = UserService(session)
@@ -356,9 +359,11 @@ async def process_successful_payment(message: Message):
             # Получаем пользователя
             user = await user_service.get_user_by_telegram_id(message.from_user.id)
             if not user:
-                logger.error(f"❌ User not found for telegram_id {message.from_user.id}")
+                logger.error(f"❌ [SUCCESS_PAYMENT] User not found for telegram_id {message.from_user.id}")
                 await message.reply("❌ Пользователь не найден")
                 return
+            
+            logger.info(f"👤 [SUCCESS_PAYMENT] Found user: ID {user.id}, telegram_id {user.telegram_id}")
             
             # Обрабатываем успешный платеж
             successful_payment_data = {
@@ -369,28 +374,34 @@ async def process_successful_payment(message: Message):
                 "total_amount": message.successful_payment.total_amount
             }
             
+            logger.info(f"📊 [SUCCESS_PAYMENT] Processing payment data: {successful_payment_data}")
+            
             payment = await telegram_payment_service.process_successful_payment(successful_payment_data)
             
             if not payment:
-                logger.error("❌ Failed to process successful payment - payment not found by payload")
+                logger.error("❌ [SUCCESS_PAYMENT] Failed to process successful payment - payment not found by payload")
                 await message.reply("❌ Ошибка при обработке платежа - платеж не найден")
                 return
             
-            logger.info(f"✅ Payment processed successfully: ID {payment.id}, type: {payment.payment_type}")
+            logger.info(f"✅ [SUCCESS_PAYMENT] Payment processed successfully: ID {payment.id}, type: {payment.payment_type}, status: {payment.status}")
             
             # Создаем подписку
+            logger.info(f"📋 [SUCCESS_PAYMENT] Creating subscription for user {user.id}, tariff: {payment.tariff_type}")
             subscription = await subscription_service.create_subscription(
                 user.id, 
                 payment.tariff_type
             )
+            
+            logger.info(f"🎯 [SUCCESS_PAYMENT] Subscription created: ID {subscription.id}, expires: {subscription.expires_at}")
             
             # Планируем уведомление об истечении
             try:
                 from app.main import scheduler
                 if scheduler:
                     scheduler.schedule_subscription_notification(user.id, subscription.end_date)
+                    logger.info(f"⏰ [SUCCESS_PAYMENT] Scheduled notification for user {user.id}")
             except Exception as e:
-                logger.error(f"Failed to schedule notification: {e}")
+                logger.error(f"❌ [SUCCESS_PAYMENT] Failed to schedule notification: {e}")
             
             # Отправляем уведомление об успешной оплате
             payment_type_names = {
@@ -406,6 +417,7 @@ async def process_successful_payment(message: Message):
 
 🔑 <b>Ваш ключ доступа:</b>"""
             
+            logger.info(f"📨 [SUCCESS_PAYMENT] Sending success message to user {user.id}")
             await message.reply(success_text, parse_mode="HTML")
             await message.reply(f"<code>{subscription.access_url}</code>", parse_mode="HTML")
             
@@ -421,8 +433,10 @@ async def process_successful_payment(message: Message):
                 reply_markup=PaymentKeyboard.get_payment_success()
             )
             
+            logger.info(f"✅ [SUCCESS_PAYMENT] Process completed successfully for user {user.id}")
+            
     except Exception as e:
-        logger.error(f"❌ Error processing successful payment: {e}", exc_info=True)
+        logger.error(f"❌ [SUCCESS_PAYMENT] Error processing successful payment: {e}", exc_info=True)
         await message.reply(f"❌ Произошла ошибка при обработке платежа: {str(e)[:100]}")
 
 @router.callback_query(F.data.startswith("payment_methods_"))

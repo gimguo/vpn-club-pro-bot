@@ -167,24 +167,44 @@ class TelegramPaymentService:
     async def process_successful_payment(self, successful_payment: Dict[str, Any]) -> Optional[TelegramPayment]:
         """Обработка успешного платежа"""
         payload = successful_payment.get("invoice_payload")
+        logger.info(f"🔍 [PROCESS_PAYMENT] Starting to process payment with payload: {payload}")
+        
         if not payload:
-            logger.error("No payload in successful payment")
+            logger.error("❌ [PROCESS_PAYMENT] No payload in successful payment")
             return None
             
+        logger.info(f"🔍 [PROCESS_PAYMENT] Searching for payment with payload: {payload}")
         payment = await self.get_payment_by_payload(payload)
+        
         if not payment:
-            logger.error(f"Payment not found for payload: {payload}")
+            logger.error(f"❌ [PROCESS_PAYMENT] Payment not found for payload: {payload}")
+            
+            # Дополнительная диагностика - выводим все платежи
+            logger.info("🔍 [PROCESS_PAYMENT] Checking all payments in database...")
+            result = await self.session.execute(select(TelegramPayment))
+            all_payments = result.scalars().all()
+            
+            for p in all_payments:
+                logger.info(f"🔍 [PROCESS_PAYMENT] Found payment: ID {p.id}, payload: {p.invoice_payload}, status: {p.status}")
+            
             return None
             
+        logger.info(f"✅ [PROCESS_PAYMENT] Found payment: ID {payment.id}, current status: {payment.status}")
+        
         # Обновляем статус и данные платежа
+        old_status = payment.status
         payment.status = "succeeded"
         payment.telegram_payment_charge_id = successful_payment.get("telegram_payment_charge_id")
         payment.provider_payment_charge_id = successful_payment.get("provider_payment_charge_id")
         
+        logger.info(f"📝 [PROCESS_PAYMENT] Updating payment {payment.id}: {old_status} -> succeeded")
+        logger.info(f"📝 [PROCESS_PAYMENT] Telegram charge ID: {payment.telegram_payment_charge_id}")
+        logger.info(f"📝 [PROCESS_PAYMENT] Provider charge ID: {payment.provider_payment_charge_id}")
+        
         await self.session.commit()
         await self.session.refresh(payment)
         
-        logger.info(f"Payment {payment.id} processed successfully")
+        logger.info(f"✅ [PROCESS_PAYMENT] Payment {payment.id} processed successfully, new status: {payment.status}")
         return payment
 
     async def get_latest_payment(self, user_id: int) -> Optional[TelegramPayment]:
