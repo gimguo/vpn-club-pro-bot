@@ -91,11 +91,13 @@ async def check_key(message: Message):
             if subscription_info['traffic_used_gb'] > 0:
                 text += f" (использовано: {subscription_info['traffic_used_gb']:.2f} ГБ)"
 
+        text += "\n\n🔑 <b>Ваш ключ доступа:</b>"
+
         await message.answer(text, parse_mode="HTML")
         
-        # Отдельно отправляем ключ для удобства копирования
+        # Отдельно отправляем только ключ для удобства копирования
         await message.answer(
-            f"🔑 <b>Ваш ключ доступа:</b>\n<code>{active_subscription.access_url}</code>",
+            f"<code>{active_subscription.access_url}</code>",
             parse_mode="HTML"
         )
 
