@@ -1,8 +1,10 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from app.keyboards.tariff_keyboard import TariffKeyboard
+from app.keyboards.payment_keyboard import PaymentKeyboard
 from app.services.user_service import UserService
 from app.services.payment_service import PaymentService
+from app.services.telegram_payment_service import TelegramPaymentService
 from app.services.subscription_service import SubscriptionService
 from app.database import AsyncSessionLocal
 from config import settings
@@ -13,8 +15,30 @@ router = Router()
 
 @router.callback_query(F.data.startswith("pay_"))
 async def process_payment(callback: CallbackQuery):
-    """Обработка создания платежа"""
+    """Обработка выбора способа оплаты"""
     tariff_type = callback.data.split("_")[1]
+    
+    # Показываем способы оплаты
+    text = f"""💳 <b>Выберите способ оплаты</b>
+
+📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(tariff_type, 'Неизвестный')}
+
+💡 <b>Рекомендуем:</b>
+⭐ <b>Telegram Stars</b> - мгновенная оплата прямо в боте
+💳 <b>Банковская карта</b> - быстро и безопасно
+🥇 <b>YooKassa</b> - привычные рубли
+"""
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=PaymentKeyboard.get_payment_methods(tariff_type),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("payment_yookassa_"))
+async def process_yookassa_payment(callback: CallbackQuery):
+    """Обработка создания платежа через YooKassa"""
+    tariff_type = callback.data.split("_")[2]
     
     async with AsyncSessionLocal() as session:
         user_service = UserService(session)
@@ -80,6 +104,163 @@ async def process_payment(callback: CallbackQuery):
             import traceback
             print(f"🔍 DEBUG: Traceback: {traceback.format_exc()}")
             await callback.answer("Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
+
+@router.callback_query(F.data.startswith("payment_stars_"))
+async def process_stars_payment(callback: CallbackQuery):
+    """Обработка оплаты через Telegram Stars"""
+    tariff_type = callback.data.split("_")[2]
+    
+    async with AsyncSessionLocal() as session:
+        user_service = UserService(session)
+        telegram_payment_service = TelegramPaymentService(session, callback.bot)
+        
+        user = await user_service.get_or_create_user(
+            telegram_id=callback.from_user.id,
+            username=callback.from_user.username,
+            first_name=callback.from_user.first_name,
+            last_name=callback.from_user.last_name
+        )
+        
+        # Получаем цену тарифа в USD
+        amount = telegram_payment_service.get_tariff_price(tariff_type)
+        stars_amount = int(amount * 1000)
+        
+        text = f"""⭐ <b>Оплата через Telegram Stars</b>
+
+📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(tariff_type, 'Неизвестный')}
+💰 <b>Стоимость:</b> {stars_amount} ⭐ Stars (${amount:.2f})
+
+✨ <b>Преимущества:</b>
+• Мгновенная оплата
+• Безопасность от Telegram
+• Не покидаете бот"""
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=PaymentKeyboard.get_stars_payment_confirm(tariff_type, amount),
+            parse_mode="HTML"
+        )
+
+@router.callback_query(F.data.startswith("confirm_stars_"))
+async def confirm_stars_payment(callback: CallbackQuery):
+    """Подтверждение оплаты через Stars"""
+    tariff_type = callback.data.split("_")[2]
+    
+    async with AsyncSessionLocal() as session:
+        user_service = UserService(session)
+        telegram_payment_service = TelegramPaymentService(session, callback.bot)
+        
+        user = await user_service.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Пользователь не найден")
+            return
+        
+        try:
+            # Получаем цену тарифа
+            amount = telegram_payment_service.get_tariff_price(tariff_type)
+            
+            # Создаем платеж
+            payment = await telegram_payment_service.create_stars_payment(
+                user_id=user.id,
+                amount=amount,
+                tariff_type=tariff_type
+            )
+            
+            # Отправляем invoice
+            success = await telegram_payment_service.send_stars_invoice(
+                chat_id=callback.message.chat.id,
+                payment=payment
+            )
+            
+            if success:
+                await callback.message.edit_text(
+                    "⭐ Invoice отправлен! Нажмите кнопку оплаты выше ⬆️",
+                    reply_markup=PaymentKeyboard.get_payment_pending()
+                )
+            else:
+                await callback.answer("❌ Ошибка при создании платежа", show_alert=True)
+                
+        except Exception as e:
+            logger.error(f"Error creating Stars payment: {e}")
+            await callback.answer("❌ Ошибка при создании платежа", show_alert=True)
+
+@router.callback_query(F.data.startswith("payment_card_"))
+async def process_card_payment(callback: CallbackQuery):
+    """Обработка оплаты банковской картой"""
+    tariff_type = callback.data.split("_")[2]
+    
+    async with AsyncSessionLocal() as session:
+        user_service = UserService(session)
+        telegram_payment_service = TelegramPaymentService(session, callback.bot)
+        
+        user = await user_service.get_or_create_user(
+            telegram_id=callback.from_user.id,
+            username=callback.from_user.username,
+            first_name=callback.from_user.first_name,
+            last_name=callback.from_user.last_name
+        )
+        
+        # Получаем цену тарифа в USD
+        amount = telegram_payment_service.get_tariff_price(tariff_type)
+        
+        text = f"""💳 <b>Оплата банковской картой</b>
+
+📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(tariff_type, 'Неизвестный')}
+💰 <b>Стоимость:</b> ${amount:.2f}
+
+🔒 <b>Преимущества:</b>
+• Безопасные платежи
+• Поддержка всех карт
+• Быстрое зачисление"""
+        
+        await callback.message.edit_text(
+            text,
+            reply_markup=PaymentKeyboard.get_card_payment_confirm(tariff_type, amount),
+            parse_mode="HTML"
+        )
+
+@router.callback_query(F.data.startswith("confirm_card_"))
+async def confirm_card_payment(callback: CallbackQuery):
+    """Подтверждение оплаты картой"""
+    tariff_type = callback.data.split("_")[2]
+    
+    async with AsyncSessionLocal() as session:
+        user_service = UserService(session)
+        telegram_payment_service = TelegramPaymentService(session, callback.bot)
+        
+        user = await user_service.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Пользователь не найден")
+            return
+        
+        try:
+            # Получаем цену тарифа
+            amount = telegram_payment_service.get_tariff_price(tariff_type)
+            
+            # Создаем платеж
+            payment = await telegram_payment_service.create_card_payment(
+                user_id=user.id,
+                amount=amount,
+                tariff_type=tariff_type
+            )
+            
+            # Отправляем invoice
+            success = await telegram_payment_service.send_card_invoice(
+                chat_id=callback.message.chat.id,
+                payment=payment
+            )
+            
+            if success:
+                await callback.message.edit_text(
+                    "💳 Invoice отправлен! Нажмите кнопку оплаты выше ⬆️",
+                    reply_markup=PaymentKeyboard.get_payment_pending()
+                )
+            else:
+                await callback.answer("❌ Ошибка при создании платежа", show_alert=True)
+                
+        except Exception as e:
+            logger.error(f"Error creating card payment: {e}")
+            await callback.answer("❌ Ошибка при создании платежа", show_alert=True)
 
 @router.callback_query(F.data == "check_payment")
 async def check_payment_status(callback: CallbackQuery):
@@ -157,6 +338,108 @@ async def check_payment_status(callback: CallbackQuery):
             "❌ Произошла ошибка при проверке платежа. Попробуйте позже.",
             reply_markup=TariffKeyboard.get_tariff_keyboard()
         )
+
+@router.message(F.successful_payment)
+async def process_successful_payment(message: Message):
+    """Обработка успешного платежа через Telegram Payments"""
+    try:
+        logger.info(f"Received successful payment from user {message.from_user.id}")
+        
+        async with AsyncSessionLocal() as session:
+            user_service = UserService(session)
+            telegram_payment_service = TelegramPaymentService(session, message.bot)
+            subscription_service = SubscriptionService(session)
+            
+            # Получаем пользователя
+            user = await user_service.get_user_by_telegram_id(message.from_user.id)
+            if not user:
+                logger.error(f"User not found for telegram_id {message.from_user.id}")
+                await message.reply("❌ Пользователь не найден")
+                return
+            
+            # Обрабатываем успешный платеж
+            successful_payment_data = {
+                "telegram_payment_charge_id": message.successful_payment.telegram_payment_charge_id,
+                "provider_payment_charge_id": message.successful_payment.provider_payment_charge_id,
+                "invoice_payload": message.successful_payment.invoice_payload,
+                "currency": message.successful_payment.currency,
+                "total_amount": message.successful_payment.total_amount
+            }
+            
+            payment = await telegram_payment_service.process_successful_payment(successful_payment_data)
+            
+            if not payment:
+                logger.error("Failed to process successful payment")
+                await message.reply("❌ Ошибка при обработке платежа")
+                return
+            
+            # Создаем подписку
+            subscription = await subscription_service.create_subscription(
+                user.id, 
+                payment.tariff_type
+            )
+            
+            # Планируем уведомление об истечении
+            try:
+                from app.main import scheduler
+                if scheduler:
+                    scheduler.schedule_subscription_notification(user.id, subscription.end_date)
+            except Exception as e:
+                logger.error(f"Failed to schedule notification: {e}")
+            
+            # Отправляем уведомление об успешной оплате
+            payment_type_names = {
+                "stars": "⭐ Telegram Stars",
+                "card": "💳 Банковская карта"
+            }
+            
+            success_text = f"""🎉 <b>Оплата прошла успешно!</b>
+
+💳 <b>Способ оплаты:</b> {payment_type_names.get(payment.payment_type, 'Неизвестный')}
+💰 <b>Сумма:</b> {payment.amount} {payment.currency}
+📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(payment.tariff_type, 'Неизвестный')}
+
+🔑 <b>Ваш ключ доступа:</b>"""
+            
+            await message.reply(success_text, parse_mode="HTML")
+            await message.reply(f"<code>{subscription.access_url}</code>", parse_mode="HTML")
+            
+            info_text = f"""📋 <b>Информация о подписке:</b>
+🚀 Безлимитный трафик
+⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
+
+📱 Не забудьте скачать приложение и настроить VPN!"""
+            
+            await message.reply(
+                info_text, 
+                parse_mode="HTML",
+                reply_markup=PaymentKeyboard.get_payment_success()
+            )
+            
+    except Exception as e:
+        logger.error(f"Error processing successful payment: {e}")
+        await message.reply("❌ Произошла ошибка при обработке платежа")
+
+@router.callback_query(F.data.startswith("payment_methods_"))
+async def back_to_payment_methods(callback: CallbackQuery):
+    """Возврат к выбору способа оплаты"""
+    tariff_type = callback.data.split("_")[2]
+    
+    text = f"""💳 <b>Выберите способ оплаты</b>
+
+📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(tariff_type, 'Неизвестный')}
+
+💡 <b>Рекомендуем:</b>
+⭐ <b>Telegram Stars</b> - мгновенная оплата прямо в боте
+💳 <b>Банковская карта</b> - быстро и безопасно
+🥇 <b>YooKassa</b> - привычные рубли
+"""
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=PaymentKeyboard.get_payment_methods(tariff_type),
+        parse_mode="HTML"
+    )
 
 def register_payment_handlers(dp):
     """Регистрация обработчиков платежей"""

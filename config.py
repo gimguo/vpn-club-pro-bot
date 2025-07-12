@@ -17,6 +17,9 @@ class Settings:
     yookassa_shop_id: str = os.getenv("YOOKASSA_SHOP_ID", "")
     yookassa_secret_key: str = os.getenv("YOOKASSA_SECRET_KEY", "")
     
+    # Telegram Payments
+    telegram_payment_provider_token: str = os.getenv("TELEGRAM_PAYMENT_PROVIDER_TOKEN", "")
+    
     # Outline VPN
     outline_api_url: str = os.getenv("OUTLINE_API_URL", "")
     outline_cert_sha256: str = os.getenv("OUTLINE_CERT_SHA256", "")

@@ -148,7 +148,8 @@ async def setup_fresh_database():
     print("🔧 Создаем схему через миграции...")
     migrations = [
         "001_initial_schema.sql",
-        "002_support_system.sql"
+        "002_support_system.sql",
+        "003_telegram_payments.sql"
     ]
     
     for migration in migrations:
