@@ -1,12 +1,59 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
+from aiogram.filters import Command
 from app.keyboards.main_keyboard import MainKeyboard
-from app.services.user_service import UserService
-from app.services.subscription_service import SubscriptionService
+from app.keyboards.support_keyboard import SupportKeyboard
 from app.database import AsyncSessionLocal
-from datetime import datetime
+from app.services import UserService
+from app.services.subscription_service import SubscriptionService
 
+import logging
+
+logger = logging.getLogger(__name__)
 router = Router()
+
+@router.message(Command("start"))
+async def start_command(message: Message):
+    """Обработчик команды /start"""
+    async with AsyncSessionLocal() as session:
+        user_service = UserService(session)
+        
+        user = await user_service.get_or_create_user(
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name
+        )
+        
+        welcome_text = f"""👋 Добро пожаловать в VPN Club Pro!
+
+🚀 Быстрый и безопасный VPN для любых задач
+🌍 Серверы по всему миру
+🔒 Полная анонимность
+⚡ Безлимитный трафик
+
+Выберите действие:"""
+
+        await message.answer(
+            welcome_text,
+            reply_markup=MainKeyboard.get_main_keyboard(),
+            parse_mode="HTML"
+        )
+
+@router.callback_query(F.data == "main_menu")
+async def main_menu(callback: CallbackQuery):
+    """Возврат в главное меню"""
+    welcome_text = """🏠 <b>Главное меню</b>
+
+Выберите нужное действие:"""
+    
+    await callback.message.edit_text(
+        welcome_text,
+        reply_markup=MainKeyboard.get_main_keyboard(),
+        parse_mode="HTML"
+    )
+
+
 
 @router.message(F.text == "📱 Скачать VPN")
 async def download_vpn(message: Message):
