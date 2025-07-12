@@ -7,18 +7,43 @@ import os
 import psycopg2
 from psycopg2.extras import DictCursor
 from datetime import datetime
+import urllib.parse
 
 def check_database():
     """Проверка состояния базы данных"""
     
     # Подключение к базе данных с переменными окружения из контейнера
     try:
+        # Сначала пробуем DATABASE_URL
+        database_url = os.getenv('DATABASE_URL')
+        
+        if database_url:
+            # Парсим DATABASE_URL
+            parsed = urllib.parse.urlparse(database_url)
+            host = parsed.hostname
+            port = parsed.port or 5432
+            database = parsed.path[1:]  # убираем первый /
+            user = parsed.username
+            password = parsed.password
+            
+            print(f"Используем DATABASE_URL: {database_url}")
+        else:
+            # Резервный вариант с отдельными переменными
+            host = os.getenv('DB_HOST', 'db')
+            port = os.getenv('DB_PORT', '5432')
+            database = os.getenv('DB_NAME', 'vpn_club')
+            user = os.getenv('DB_USER', 'postgres')
+            password = os.getenv('DB_PASSWORD', 'postgres_password')
+            
+            print(f"Используем отдельные переменные: host={host}, db={database}")
+        
+        # Подключение к PostgreSQL
         connection = psycopg2.connect(
-            host=os.getenv('DB_HOST', 'db'),
-            database=os.getenv('DB_NAME', 'vpn_club'),
-            user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD', ''),
-            port=os.getenv('DB_PORT', '5432')
+            host=host,
+            database=database,
+            user=user,
+            password=password,
+            port=port
         )
         
         cursor = connection.cursor(cursor_factory=DictCursor)
@@ -27,8 +52,9 @@ def check_database():
         print("ПРОВЕРКА БАЗЫ ДАННЫХ")
         print("=" * 60)
         print(f"Время проверки: {datetime.now()}")
-        print(f"Подключение: {os.getenv('DB_HOST', 'db')}:{os.getenv('DB_PORT', '5432')}")
-        print(f"База данных: {os.getenv('DB_NAME', 'vpn_club')}")
+        print(f"Подключение: {host}:{port}")
+        print(f"База данных: {database}")
+        print(f"Пользователь: {user}")
         print()
         
         # Проверка таблиц
@@ -134,12 +160,11 @@ def check_database():
         
         # Проверка переменных окружения
         print("7. ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ:")
-        print(f"   - BOT_TOKEN: {'УСТАНОВЛЕН' if os.getenv('BOT_TOKEN') else 'НЕ УСТАНОВЛЕН'}")
+        print(f"   - TELEGRAM_BOT_TOKEN: {'УСТАНОВЛЕН' if os.getenv('TELEGRAM_BOT_TOKEN') else 'НЕ УСТАНОВЛЕН'}")
         print(f"   - TELEGRAM_PAYMENT_PROVIDER_TOKEN: {'УСТАНОВЛЕН' if os.getenv('TELEGRAM_PAYMENT_PROVIDER_TOKEN') else 'НЕ УСТАНОВЛЕН'}")
-        print(f"   - DB_HOST: {os.getenv('DB_HOST', 'НЕ УСТАНОВЛЕН')}")
-        print(f"   - DB_NAME: {os.getenv('DB_NAME', 'НЕ УСТАНОВЛЕН')}")
-        print(f"   - DB_USER: {os.getenv('DB_USER', 'НЕ УСТАНОВЛЕН')}")
-        print(f"   - DB_PASSWORD: {'УСТАНОВЛЕН' if os.getenv('DB_PASSWORD') else 'НЕ УСТАНОВЛЕН'}")
+        print(f"   - DATABASE_URL: {'УСТАНОВЛЕН' if os.getenv('DATABASE_URL') else 'НЕ УСТАНОВЛЕН'}")
+        print(f"   - ADMIN_ID: {os.getenv('ADMIN_ID', 'НЕ УСТАНОВЛЕН')}")
+        print(f"   - DEBUG: {os.getenv('DEBUG', 'НЕ УСТАНОВЛЕН')}")
         print()
         
         cursor.close()
@@ -152,6 +177,7 @@ def check_database():
     except Exception as e:
         print(f"ОШИБКА ПОДКЛЮЧЕНИЯ К БД: {e}")
         print(f"Переменные окружения:")
+        print(f"   - DATABASE_URL: {'УСТАНОВЛЕН' if os.getenv('DATABASE_URL') else 'НЕ УСТАНОВЛЕН'}")
         print(f"   - DB_HOST: {os.getenv('DB_HOST', 'НЕ УСТАНОВЛЕН')}")
         print(f"   - DB_NAME: {os.getenv('DB_NAME', 'НЕ УСТАНОВЛЕН')}")
         print(f"   - DB_USER: {os.getenv('DB_USER', 'НЕ УСТАНОВЛЕН')}")
