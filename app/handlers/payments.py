@@ -155,11 +155,15 @@ async def confirm_stars_payment(callback: CallbackQuery):
             return
         
         try:
+            logger.info(f"Creating Stars payment for user {user.id}, tariff {tariff_type}")
+            
             # Создаем платеж
             payment = await telegram_payment_service.create_stars_payment(
                 user_id=user.id,
                 tariff_type=tariff_type
             )
+            
+            logger.info(f"Stars payment created: {payment.id}, amount: {payment.amount} {payment.currency}")
             
             # Отправляем invoice
             success = await telegram_payment_service.send_stars_invoice(
@@ -168,16 +172,18 @@ async def confirm_stars_payment(callback: CallbackQuery):
             )
             
             if success:
+                logger.info(f"Stars invoice sent successfully to chat {callback.message.chat.id}")
                 await callback.message.edit_text(
                     "⭐ Invoice отправлен! Нажмите кнопку оплаты выше ⬆️",
                     reply_markup=PaymentKeyboard.get_payment_pending()
                 )
             else:
-                await callback.answer("❌ Ошибка при создании платежа", show_alert=True)
+                logger.error("Failed to send Stars invoice")
+                await callback.answer("❌ Ошибка при отправке invoice", show_alert=True)
                 
         except Exception as e:
-            logger.error(f"Error creating Stars payment: {e}")
-            await callback.answer("❌ Ошибка при создании платежа", show_alert=True)
+            logger.error(f"Error creating Stars payment: {e}", exc_info=True)
+            await callback.answer(f"❌ Ошибка: {str(e)[:100]}", show_alert=True)
 
 @router.callback_query(F.data.startswith("payment_card_"))
 async def process_card_payment(callback: CallbackQuery):
@@ -338,7 +344,9 @@ async def check_payment_status(callback: CallbackQuery):
 async def process_successful_payment(message: Message):
     """Обработка успешного платежа через Telegram Payments"""
     try:
-        logger.info(f"Received successful payment from user {message.from_user.id}")
+        payment_info = message.successful_payment
+        logger.info(f"🎉 Received successful payment from user {message.from_user.id}")
+        logger.info(f"💰 Payment details: {payment_info.total_amount} {payment_info.currency}, payload: {payment_info.invoice_payload}")
         
         async with AsyncSessionLocal() as session:
             user_service = UserService(session)
@@ -348,7 +356,7 @@ async def process_successful_payment(message: Message):
             # Получаем пользователя
             user = await user_service.get_user_by_telegram_id(message.from_user.id)
             if not user:
-                logger.error(f"User not found for telegram_id {message.from_user.id}")
+                logger.error(f"❌ User not found for telegram_id {message.from_user.id}")
                 await message.reply("❌ Пользователь не найден")
                 return
             
@@ -364,9 +372,11 @@ async def process_successful_payment(message: Message):
             payment = await telegram_payment_service.process_successful_payment(successful_payment_data)
             
             if not payment:
-                logger.error("Failed to process successful payment")
-                await message.reply("❌ Ошибка при обработке платежа")
+                logger.error("❌ Failed to process successful payment - payment not found by payload")
+                await message.reply("❌ Ошибка при обработке платежа - платеж не найден")
                 return
+            
+            logger.info(f"✅ Payment processed successfully: ID {payment.id}, type: {payment.payment_type}")
             
             # Создаем подписку
             subscription = await subscription_service.create_subscription(
@@ -412,8 +422,8 @@ async def process_successful_payment(message: Message):
             )
             
     except Exception as e:
-        logger.error(f"Error processing successful payment: {e}")
-        await message.reply("❌ Произошла ошибка при обработке платежа")
+        logger.error(f"❌ Error processing successful payment: {e}", exc_info=True)
+        await message.reply(f"❌ Произошла ошибка при обработке платежа: {str(e)[:100]}")
 
 @router.callback_query(F.data.startswith("payment_methods_"))
 async def back_to_payment_methods(callback: CallbackQuery):
