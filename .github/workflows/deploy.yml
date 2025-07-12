@@ -45,6 +45,11 @@ jobs:
             cp demo.env .env
           fi
           
+          # Загружаем необходимые Docker образы
+          echo "--> Pulling required Docker images..."
+          docker pull postgres:15
+          docker pull cgr.dev/chainguard/redis:latest
+          
           # Запускаем только PostgreSQL контейнер для инициализации
           echo "--> Starting PostgreSQL container..."
           docker compose up -d db

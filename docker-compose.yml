@@ -1,9 +1,6 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15
-    pull_policy: never
     environment:
       POSTGRES_DB: vpn_club
       POSTGRES_USER: postgres
