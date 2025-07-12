@@ -143,7 +143,8 @@ async def main():
             
         else:
             # Polling режим для Telegram
-            logger.info("Запуск в режиме polling...")
+            logger.info("🔄 НОВЫЙ КОД: Запуск в режиме polling с successful_payment!")
+            logger.info("🏷️ НОВЫЙ КОД: allowed_updates = ['message', 'callback_query', 'successful_payment']")
             await dp.start_polling(bot, allowed_updates=['message', 'callback_query', 'successful_payment'])
             
     except Exception as e:
