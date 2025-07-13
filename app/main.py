@@ -99,8 +99,11 @@ async def run_bot():
     scheduler.start()
     
     try:
-        logger.info("Запуск в режиме polling...")
-        await dp.start_polling(bot, allowed_updates=['message', 'callback_query', 'successful_payment'])
+        # Форсируем деплой через GitHub Actions
+        logger.info("🔄 НОВЫЙ КОД: Запуск в режиме polling с successful_payment!")
+        allowed_updates = ['message', 'callback_query', 'successful_payment']
+        logger.info(f"🏷️ НОВЫЙ КОД: allowed_updates = {allowed_updates}")
+        await dp.start_polling(bot, allowed_updates=allowed_updates)
     finally:
         await bot.session.close()
         if scheduler:
