@@ -124,5 +124,6 @@ async def main():
     # Запускаем бота в основном потоке
     await run_bot()
 
-if __name__ == "__main__":
-    asyncio.run(main()) 
+# Убираем автозапуск из app/main.py чтобы избежать дублирования
+# if __name__ == "__main__":
+#     asyncio.run(main()) 
