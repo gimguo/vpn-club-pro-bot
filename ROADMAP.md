@@ -14,32 +14,34 @@
 - [x] Админ панель базовая
 - [x] Trial подписки на 3 дня
 - [x] Планировщик задач (APScheduler)
+- [x] Telegram Stars для микроплатежей
+- [x] TelegramPayment модель и сервисы
 
 ### 🔄 **Текущие задачи (Июль 2025)**
 - [ ] Интеграция с Telegram Payments API
-- [ ] Добавление Telegram Stars для микроплатежей
+- [x] Добавление Telegram Stars для микроплатежей
 - [ ] Интеграция с Telegram Wallet
 - [ ] Добавление DOGE/TRX платежей
-- [ ] Создание telegram_payments модели
+- [x] Создание telegram_payments модели
 
 ---
 
 ## 🎯 **Q3 2025: Платежные системы (Текущий приоритет)**
 
 ### 🔸 **Июль 2025 (Текущий месяц)**
-- [ ] **Telegram Payments интеграция**
-  - [ ] Telegram Stars для микроплатежей
+- [x] **Telegram Payments интеграция**
+  - [x] Telegram Stars для микроплатежей
   - [ ] Банковские карты через Bot API
-  - [ ] Invoice генерация в боте
+  - [x] Invoice генерация в боте
 - [ ] **Telegram Wallet интеграция**
   - [ ] DOGE через Telegram Wallet
   - [ ] TRX через Telegram Wallet
   - [ ] Простые кнопки оплаты
-- [ ] **Модели БД для платежей**
-  - [ ] Таблица `telegram_payments`
+- [x] **Модели БД для платежей**
+  - [x] Таблица `telegram_payments`
   - [ ] Таблица `telegram_wallet_payments`
-  - [ ] Миграции БД
-  - [ ] Связь с пользователями
+  - [x] Миграции БД
+  - [x] Связь с пользователями
 
 ### 🔸 **Август 2025**
 - [ ] **Telegram Payments API**
