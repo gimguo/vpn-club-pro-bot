@@ -80,17 +80,19 @@ class SubscriptionService:
             return start_date + timedelta(days=30)
 
     async def get_active_subscription(self, user_id: int) -> Optional[Subscription]:
-        """Получение активной подписки пользователя"""
+        """Получение самой свежей активной подписки пользователя"""
         result = await self.session.execute(
-            select(Subscription).where(
+            select(Subscription)
+            .where(
                 and_(
                     Subscription.user_id == user_id,
                     Subscription.is_active == True,
                     Subscription.end_date > datetime.now(pytz.UTC)
                 )
             )
+            .order_by(Subscription.end_date.desc())
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     async def get_expiring_subscriptions(self, days_before: int = 3) -> List[Subscription]:
         """Получение подписок, истекающих через указанное количество дней"""
