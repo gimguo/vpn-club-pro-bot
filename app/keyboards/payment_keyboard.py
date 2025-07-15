@@ -28,7 +28,7 @@ class PaymentKeyboard:
         
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"⭐ Telegram Stars ({stars_price}⭐)", callback_data=f"payment_stars_{tariff_type}")],
+                # [InlineKeyboardButton(text=f"⭐ Telegram Stars ({stars_price}⭐)", callback_data=f"payment_stars_{tariff_type}")],
                 # [InlineKeyboardButton(text="💳 Банковская карта", callback_data=f"payment_card_{tariff_type}")],
                 [InlineKeyboardButton(text=f"🥇 YooKassa ({rub_price}₽)", callback_data=f"payment_yookassa_{tariff_type}")],
                 # [InlineKeyboardButton(text="🐕 DOGE (скоро)", callback_data=f"payment_doge_{tariff_type}")],
