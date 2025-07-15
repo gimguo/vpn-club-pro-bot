@@ -47,7 +47,7 @@ async def process_tariff_selection(callback: CallbackQuery):
         # Проверяем есть ли уже активная подписка
         active_subscription = await subscription_service.get_active_subscription(user.id)
         
-        # Для триал подписки разрешаем переход на платные тарифы
+        # Разрешаем оплату платной подписки при активном trial
         if active_subscription:
             if tariff_type == "trial":
                 await callback.answer("У вас уже есть активная подписка!", show_alert=True)
