@@ -19,14 +19,15 @@ async def process_payment(callback: CallbackQuery):
     tariff_type = callback.data.split("_")[1]
     
     # Показываем способы оплаты
-    text = f"""💳 <b>Выберите способ оплаты</b>
+    text = f"""💳 <b>Оплата подписки</b>
 
 📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(tariff_type, 'Неизвестный')}
 
-💡 <b>Рекомендуем:</b>
-⭐ <b>Telegram Stars</b> - мгновенная оплата прямо в боте
-💳 <b>Банковская карта</b> - быстро и безопасно
-🥇 <b>YooKassa</b> - привычные рубли
+Доступные способы оплаты через YooKassa:
+• Банковские карты (Visa, MasterCard, МИР)
+• СБП (Система быстрых платежей)
+• ЮMoney
+• SberPay
 """
     
     await callback.message.edit_text(
@@ -424,14 +425,15 @@ async def back_to_payment_methods(callback: CallbackQuery):
     """Возврат к выбору способа оплаты"""
     tariff_type = callback.data.split("_")[2]
     
-    text = f"""💳 <b>Выберите способ оплаты</b>
+    text = f"""💳 <b>Оплата подписки</b>
 
 📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(tariff_type, 'Неизвестный')}
 
-💡 <b>Рекомендуем:</b>
-⭐ <b>Telegram Stars</b> - мгновенная оплата прямо в боте
-💳 <b>Банковская карта</b> - быстро и безопасно
-🥇 <b>YooKassa</b> - привычные рубли
+Доступные способы оплаты через YooKassa:
+• Банковские карты (Visa, MasterCard, МИР)
+• СБП (Система быстрых платежей)
+• ЮMoney
+• SberPay
 """
     
     await callback.message.edit_text(

@@ -21,7 +21,7 @@ class TariffKeyboard:
         """Кнопка для оплаты"""
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"💳 Оплатить {amount} ₽", callback_data=f"pay_{tariff_type}")],
+                [InlineKeyboardButton(text=f"💳 Оплатить {amount} ₽", callback_data=f"payment_yookassa_{tariff_type}")],
                 [InlineKeyboardButton(text="⬅️ Назад к тарифам", callback_data="back_to_tariffs")]
             ]
         )
