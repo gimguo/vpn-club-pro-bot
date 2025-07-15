@@ -30,6 +30,12 @@ async def process_yookassa_webhook(request: Request):
                 payment_service = PaymentService(session)
                 subscription_service = SubscriptionService(session)
                 
+                # Проверяем статус платежа через API YooKassa
+                is_paid = await payment_service.verify_payment(payment_id)
+                if not is_paid:
+                    logger.warning(f"Webhook: Payment {payment_id} not succeeded on YooKassa, skipping subscription creation.")
+                    return {"status": "skipped"}
+                
                 # Обновляем статус платежа
                 payment = await payment_service.update_payment_status(payment_id, "succeeded")
                 

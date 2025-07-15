@@ -39,7 +39,7 @@ class PaymentChecker:
                             "succeeded"
                         )
                         
-                        # Создаем подписку
+                        # Создаём подписку только если статус реально 'succeeded'
                         subscription = await subscription_service.create_subscription(
                             payment.user_id,
                             payment.tariff_type
@@ -49,14 +49,13 @@ class PaymentChecker:
                         
                         # TODO: Отправить уведомление пользователю в Telegram
                         
-                    elif yookassa_payment.status in ["canceled", "failed"]:
-                        # Обновляем статус на неуспешный
+                    else:
+                        # Не создаём подписку, только обновляем статус в базе
                         await payment_service.update_payment_status(
                             payment.yookassa_payment_id,
                             yookassa_payment.status
                         )
-                        
-                        logger.info(f"Payment {payment.yookassa_payment_id} failed/canceled")
+                        logger.info(f"Payment {payment.yookassa_payment_id} not succeeded (status: {yookassa_payment.status}), subscription not created")
                         
                 except Exception as e:
                     logger.error(f"Error checking payment {payment.yookassa_payment_id}: {e}")
