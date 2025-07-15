@@ -42,16 +42,19 @@ async def yookassa_webhook(request: Request):
         logger.info(f"🔔 Webhook received: {data}")
         
         # Проверяем тип события
-        if data.get("event") == "payment.succeeded":
+        event_type = data.get("event")
+        
+        if event_type == "payment.succeeded":
             payment_data = data.get("object", {})
             payment_id = payment_data.get("id")
             
             if payment_id:
-                logger.info(f"💳 Processing payment: {payment_id}")
+                logger.info(f"💳 Processing successful payment: {payment_id}")
                 
                 # Записываем webhook в файл для обработки планировщиком
                 webhook_data = {
                     "payment_id": payment_id,
+                    "event": "payment.succeeded",
                     "timestamp": datetime.now().isoformat()
                 }
                 
@@ -62,7 +65,33 @@ async def yookassa_webhook(request: Request):
                 with open(f"/tmp/webhooks/payment_{payment_id}.json", "w") as f:
                     json.dump(webhook_data, f)
                 
-                logger.info(f"📝 Webhook saved to file for processing by scheduler")
+                logger.info(f"📝 Successful payment webhook saved to file for processing")
+                
+        elif event_type == "payment.canceled":
+            payment_data = data.get("object", {})
+            payment_id = payment_data.get("id")
+            
+            if payment_id:
+                logger.info(f"❌ Processing canceled payment: {payment_id}")
+                
+                # Записываем webhook об отмене
+                webhook_data = {
+                    "payment_id": payment_id,
+                    "event": "payment.canceled",
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # Создаем папку для webhooks если её нет
+                os.makedirs("/tmp/webhooks", exist_ok=True)
+                
+                # Записываем webhook в файл
+                with open(f"/tmp/webhooks/payment_canceled_{payment_id}.json", "w") as f:
+                    json.dump(webhook_data, f)
+                
+                logger.info(f"📝 Canceled payment webhook saved to file")
+                
+        else:
+            logger.info(f"ℹ️ Received unhandled event: {event_type}")
                     
         return JSONResponse(content={"status": "ok"})
         
