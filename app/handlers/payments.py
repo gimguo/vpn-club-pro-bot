@@ -55,7 +55,6 @@ async def process_yookassa_payment(callback: CallbackQuery):
         amount = payment_service.get_tariff_price(tariff_type)
         
         try:
-            print(f"🔍 DEBUG: About to create payment for user {user.id}, amount {amount}, tariff {tariff_type}")
             # Создаем платеж
             payment = await payment_service.create_payment(
                 user_id=user.id,
@@ -63,14 +62,9 @@ async def process_yookassa_payment(callback: CallbackQuery):
                 tariff_type=tariff_type,
                 return_url=f"https://t.me/{settings.bot_username}"
             )
-            print(f"🔍 DEBUG: Payment created successfully: {payment.yookassa_payment_id}")
             
-            print(f"🔍 DEBUG: About to get tariff names")
             tariff_names = TariffKeyboard.get_tariff_names()
-            print(f"🔍 DEBUG: Got tariff names: {tariff_names}")
-            
             tariff_name = tariff_names.get(tariff_type, "Неизвестный тариф")
-            print(f"🔍 DEBUG: Tariff name for {tariff_type}: {tariff_name}")
             
             text = f"""💳 <b>Оплата подписки</b>
 
@@ -79,30 +73,16 @@ async def process_yookassa_payment(callback: CallbackQuery):
 
 Нажмите кнопку "Оплатить" и после успешной оплаты вернитесь в бот для получения VPN-ключа."""
             
-            print(f"🔍 DEBUG: Text formatted successfully")
+            keyboard = TariffKeyboard.get_payment_url_button(payment.payment_url)
             
-            print(f"🔍 DEBUG: About to edit message with payment URL: {payment.payment_url}")
-            
-            try:
-                keyboard = TariffKeyboard.get_payment_url_button(payment.payment_url)
-                print(f"🔍 DEBUG: Keyboard created successfully")
-                
-                await callback.message.edit_text(
-                    text,
-                    reply_markup=keyboard,
-                    parse_mode="HTML"
-                )
-                print(f"🔍 DEBUG: Message edited successfully")
-            except Exception as edit_error:
-                print(f"🔍 DEBUG: Error editing message: {edit_error}")
-                print(f"🔍 DEBUG: Error type: {type(edit_error)}")
-                raise edit_error
+            await callback.message.edit_text(
+                text,
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
             
         except Exception as e:
-            print(f"🔍 DEBUG: Exception caught: {e}")
-            print(f"🔍 DEBUG: Exception type: {type(e)}")
-            import traceback
-            print(f"🔍 DEBUG: Traceback: {traceback.format_exc()}")
+            logger.error(f"YooKassa payment creation failed: {e}")
             await callback.answer("Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
 
 @router.callback_query(F.data.startswith("payment_stars_"))

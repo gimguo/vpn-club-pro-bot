@@ -29,6 +29,7 @@ class PaymentService:
         logger.info(f"Using email for payment: {customer_email}")
         idempotency_key = str(uuid.uuid4())
         tariff_names = {
+            "trial": "Пробный период (3 дня)",
             "monthly": "Подписка на сервис (1 месяц)",
             "quarterly": "Подписка на сервис (3 месяца)", 
             "half_yearly": "Подписка на сервис (6 месяцев)",
