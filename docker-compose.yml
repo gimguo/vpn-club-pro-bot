@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: vpn_bot_db
     environment:
       POSTGRES_DB: vpn_club
@@ -20,7 +20,7 @@ services:
       retries: 5
 
   redis:
-    image: cgr.dev/chainguard/redis:latest
+    image: redis:7-alpine
     container_name: vpn_bot_redis
     ports:
       - "6380:6379"
