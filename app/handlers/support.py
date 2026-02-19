@@ -262,13 +262,30 @@ async def show_faq_answer(callback: CallbackQuery):
 @router.callback_query(F.data == "support_back")
 async def back_to_support(callback: CallbackQuery):
     """Возврат в меню поддержки"""
-    await support_menu(callback.message)
+    text = """💬 <b>Служба поддержки</b>
+
+Выберите действие:"""
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=SupportKeyboard.get_support_menu(),
+        parse_mode="HTML"
+    )
 
 @router.callback_query(F.data == "support_cancel")
 async def cancel_support(callback: CallbackQuery, state: FSMContext):
     """Отмена создания тикета"""
     await state.clear()
-    await support_menu(callback.message)
+    
+    text = """💬 <b>Служба поддержки</b>
+
+Выберите действие:"""
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=SupportKeyboard.get_support_menu(),
+        parse_mode="HTML"
+    )
 
 @router.callback_query(F.data == "back_to_main")
 async def back_to_main_menu(callback: CallbackQuery):

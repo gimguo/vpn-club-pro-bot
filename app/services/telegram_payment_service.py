@@ -213,8 +213,9 @@ class TelegramPaymentService:
             select(TelegramPayment)
             .where(TelegramPayment.user_id == user_id)
             .order_by(TelegramPayment.created_at.desc())
+            .limit(1)
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     def get_tariff_price(self, tariff_type: str) -> Decimal:
         """Получение цены тарифа в USD"""

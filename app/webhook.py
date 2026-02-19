@@ -118,7 +118,7 @@ def create_webhook_app():
     SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
-        allowed_updates=['message', 'callback_query', 'successful_payment']
+        allowed_updates=['message', 'callback_query', 'pre_checkout_query']
     ).register(app, path="/webhook/telegram")
     
     setup_application(app, dp, bot=bot)

@@ -118,6 +118,10 @@ async def main():
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     
+    # Устанавливаем глобальную переменную бота в app.main для доступа из хэндлеров
+    import app.main as app_main
+    app_main.bot = bot
+    
     # Создание диспетчера
     dp = Dispatcher()
     
@@ -135,6 +139,9 @@ async def main():
     logger.info("Запуск планировщика...")
     scheduler = NotificationScheduler(bot)
     scheduler.start()
+    
+    # Устанавливаем глобальную переменную планировщика в app.main для доступа из хэндлеров
+    app_main.scheduler = scheduler
     
     # Запускаем FastAPI в отдельном потоке для YooKassa webhook
     fastapi_thread = threading.Thread(target=run_fastapi, daemon=True)
@@ -172,9 +179,8 @@ async def main():
             
         else:
             # Polling режим для Telegram
-            logger.info("🔄 НОВЫЙ КОД: Запуск в режиме polling с successful_payment!")
-            logger.info("🏷️ НОВЫЙ КОД: allowed_updates = ['message', 'callback_query', 'successful_payment']")
-            await dp.start_polling(bot, allowed_updates=['message', 'callback_query', 'successful_payment'])
+            logger.info("🔄 Запуск в режиме polling...")
+            await dp.start_polling(bot, allowed_updates=['message', 'callback_query', 'pre_checkout_query'])
             
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")

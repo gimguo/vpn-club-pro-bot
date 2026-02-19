@@ -42,6 +42,11 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_is_active ON subscriptions(is_active);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_end_date ON subscriptions(end_date);
 
+-- Уникальный индекс: только одна активная подписка на пользователя
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_subscription_per_user
+ON subscriptions (user_id)
+WHERE is_active = true;
+
 -- Create payments table
 CREATE TABLE IF NOT EXISTS payments (
     id SERIAL PRIMARY KEY,

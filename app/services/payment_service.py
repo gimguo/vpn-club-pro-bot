@@ -133,5 +133,6 @@ class PaymentService:
             select(Payment)
             .where(Payment.user_id == user_id)
             .order_by(Payment.created_at.desc())
+            .limit(1)
         )
-        return result.scalar_one_or_none() 
+        return result.scalars().first() 

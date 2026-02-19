@@ -7,6 +7,7 @@ from app.database import AsyncSessionLocal
 from config import settings
 import asyncio
 from datetime import datetime, timedelta
+import pytz
 
 class NotificationScheduler:
     def __init__(self, bot):
@@ -51,7 +52,7 @@ class NotificationScheduler:
             notification_date = subscription_end_date - timedelta(days=3)
             
             # Планируем только если дата в будущем
-            if notification_date > datetime.now():
+            if notification_date > datetime.now(pytz.UTC):
                 job_id = f"expiring_notification_{user_id}_{subscription_end_date.timestamp()}"
                 
                 # Удаляем предыдущие уведомления для этого пользователя если есть

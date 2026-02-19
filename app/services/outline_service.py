@@ -25,6 +25,11 @@ class OutlineService:
                 elif method.upper() == "POST":
                     async with session.post(url, json=data) as response:
                         return await response.json()
+                elif method.upper() == "PUT":
+                    async with session.put(url, json=data) as response:
+                        if response.status == 204:
+                            return {"status": "ok"}
+                        return await response.json()
                 elif method.upper() == "DELETE":
                     async with session.delete(url) as response:
                         return {"status": "deleted"} if response.status == 204 else await response.json()

@@ -76,15 +76,16 @@ class SupportService:
         )
         return result.scalar_one_or_none()
 
-    async def add_message_to_ticket(self, ticket_id: int, message: str, 
-                                  user_id: int = None, admin_id: int = None) -> SupportMessage:
+    async def add_message_to_ticket(self, ticket_id: int, message: str = "", 
+                                  user_id: int = None, admin_id: int = None,
+                                  is_from_admin: bool = False) -> SupportMessage:
         """Добавление сообщения в тикет"""
         support_message = SupportMessage(
             ticket_id=ticket_id,
             user_id=user_id,
             admin_id=admin_id,
             message=message,
-            is_from_admin=admin_id is not None
+            is_from_admin=is_from_admin or (admin_id is not None)
         )
         
         self.session.add(support_message)
@@ -206,28 +207,5 @@ class SupportService:
             select(SupportTicket)
             .order_by(SupportTicket.created_at.desc())
             .limit(limit)
-        )
-        return result.scalars().all()
-    
-    async def add_message_to_ticket(self, ticket_id: int, user_id: int = None, admin_id: int = None, message: str = "", is_from_admin: bool = False):
-        """Добавление сообщения в тикет"""
-        support_message = SupportMessage(
-            ticket_id=ticket_id,
-            user_id=user_id,
-            admin_id=admin_id,
-            message=message,
-            is_from_admin=is_from_admin
-        )
-        
-        self.session.add(support_message)
-        await self.session.commit()
-        return support_message
-    
-    async def get_ticket_messages(self, ticket_id: int):
-        """Получение истории сообщений тикета"""
-        result = await self.session.execute(
-            select(SupportMessage)
-            .where(SupportMessage.ticket_id == ticket_id)
-            .order_by(SupportMessage.created_at.asc())
         )
         return result.scalars().all() 

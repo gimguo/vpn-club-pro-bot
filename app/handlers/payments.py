@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, PreCheckoutQuery
 from app.keyboards.tariff_keyboard import TariffKeyboard
 from app.keyboards.payment_keyboard import PaymentKeyboard
 from app.services.user_service import UserService
@@ -321,6 +321,29 @@ async def check_payment_status(callback: CallbackQuery):
             reply_markup=TariffKeyboard.get_tariff_keyboard()
         )
 
+@router.pre_checkout_query()
+async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
+    """Обработка pre_checkout_query — обязательный шаг для Telegram Payments"""
+    try:
+        logger.info(f"📋 [PRE_CHECKOUT] Received pre_checkout_query from user {pre_checkout_query.from_user.id}")
+        logger.info(f"📋 [PRE_CHECKOUT] Payload: {pre_checkout_query.invoice_payload}")
+        logger.info(f"📋 [PRE_CHECKOUT] Currency: {pre_checkout_query.currency}, Amount: {pre_checkout_query.total_amount}")
+        
+        # Проверяем, что платеж существует в БД
+        async with AsyncSessionLocal() as session:
+            telegram_payment_service = TelegramPaymentService(session, pre_checkout_query.bot)
+            payment = await telegram_payment_service.get_payment_by_payload(pre_checkout_query.invoice_payload)
+            
+            if payment and payment.status == "pending":
+                await pre_checkout_query.answer(ok=True)
+                logger.info(f"✅ [PRE_CHECKOUT] Approved for payload: {pre_checkout_query.invoice_payload}")
+            else:
+                await pre_checkout_query.answer(ok=False, error_message="Платёж не найден или уже обработан")
+                logger.warning(f"❌ [PRE_CHECKOUT] Rejected: payment not found or already processed")
+    except Exception as e:
+        logger.error(f"❌ [PRE_CHECKOUT] Error: {e}", exc_info=True)
+        await pre_checkout_query.answer(ok=False, error_message="Ошибка при проверке платежа")
+
 @router.message(F.successful_payment)
 async def process_successful_payment(message: Message):
     """Обработка успешного платежа через Telegram Payments"""
@@ -373,7 +396,7 @@ async def process_successful_payment(message: Message):
                 payment.tariff_type
             )
             
-            logger.info(f"🎯 [SUCCESS_PAYMENT] Subscription created: ID {subscription.id}, expires: {subscription.expires_at}")
+            logger.info(f"🎯 [SUCCESS_PAYMENT] Subscription created: ID {subscription.id}, expires: {subscription.end_date}")
             
             # Планируем уведомление об истечении
             try:
