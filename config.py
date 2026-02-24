@@ -58,6 +58,10 @@ class Settings:
     trial_days: int = int(os.getenv("TRIAL_DAYS", "3"))
     trial_traffic_gb: int = int(os.getenv("TRIAL_TRAFFIC_GB", "10"))
     
+    # Referral system
+    referral_bonus_days: int = int(os.getenv("REFERRAL_BONUS_DAYS", "7"))
+    referral_trial_days: int = int(os.getenv("REFERRAL_TRIAL_DAYS", "7"))  # Расширенный триал по рефералу
+    
     # Redis
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")
     

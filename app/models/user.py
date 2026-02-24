@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, BigInteger
+from sqlalchemy import Column, Integer, String, Boolean, BigInteger, ForeignKey
 from .base import BaseModel
 
 class User(BaseModel):
@@ -13,6 +13,11 @@ class User(BaseModel):
     is_admin = Column(Boolean, default=False)
     is_trial_used = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    
+    # Referral system
+    referral_code = Column(String(20), unique=True, nullable=True, index=True)
+    referred_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    referral_bonus_days = Column(Integer, default=0)
     
     def __repr__(self):
         return f"<User(telegram_id={self.telegram_id}, username={self.username})>" 

@@ -8,18 +8,23 @@ from config import settings
 
 router = Router()
 
-@router.message(F.text == "🔥 Тарифы")
+
+@router.message(F.text.in_({"🔥 Тарифы", "🔥 Продлить"}))
 async def show_tariffs(message: Message):
     """Показать тарифы"""
-    text = """💰 <b>Выберите подходящий тариф:</b>
+    monthly = settings.monthly_price
+    
+    text = f"""💰 <b>Выберите тариф</b>
 
-🆓 <b>Пробный период</b> - 3 дня бесплатно
-   • Лимит: 10 ГБ трафика
-   • Один раз на пользователя
+🆓 <b>Пробный период</b> — бесплатно
+   {settings.trial_days} дней · {settings.trial_traffic_gb} ГБ трафика
 
-💵 <b>Платные тарифы</b> - безлимитный трафик
-   • Полная скорость без ограничений
-   • Стабильная работа 24/7"""
+━━━━━━━━━━━━━━━━━━
+
+💵 <b>Платные тарифы</b> — безлимит
+   ✅ Скорость без ограничений
+   ✅ Работает 24/7
+   ✅ Все устройства"""
 
     await message.answer(
         text,
@@ -27,11 +32,17 @@ async def show_tariffs(message: Message):
         parse_mode="HTML"
     )
 
+
 @router.callback_query(F.data.startswith("tariff_"))
 async def process_tariff_selection(callback: CallbackQuery):
     """Обработка выбора тарифа"""
-    tariff_type = callback.data.split("_")[1]
-    tariff_names = TariffKeyboard.get_tariff_names()
+    tariff_type = callback.data.removeprefix("tariff_")
+    tariff_details = TariffKeyboard.get_tariff_details()
+    detail = tariff_details.get(tariff_type)
+    
+    if not detail:
+        await callback.answer("Тариф не найден", show_alert=True)
+        return
     
     async with AsyncSessionLocal() as session:
         user_service = UserService(session)
@@ -44,82 +55,75 @@ async def process_tariff_selection(callback: CallbackQuery):
             last_name=callback.from_user.last_name
         )
         
-        # Проверяем есть ли уже активная подписка
+        # Проверяем активную подписку
         active_subscription = await subscription_service.get_active_subscription(user.id)
         
-        # Разрешаем оплату платной подписки при активном trial
         if active_subscription:
             if tariff_type == "trial":
                 await callback.answer("У вас уже есть активная подписка!", show_alert=True)
                 return
             elif active_subscription.tariff_type != "trial":
-                await callback.answer("У вас уже есть активная платная подписка!", show_alert=True)
+                await callback.answer("У вас уже есть платная подписка!", show_alert=True)
                 return
         
         if tariff_type == "trial":
-            # Проверяем использован ли пробный период
+            # Пробный период
             if user.is_trial_used:
-                await callback.answer("Вы уже использовали пробный период!", show_alert=True)
+                await callback.answer("Пробный период уже использован!", show_alert=True)
                 return
             
             try:
-                # Создаем пробную подписку
                 subscription = await subscription_service.create_subscription(user.id, "trial")
                 await user_service.mark_trial_used(user.id)
                 
-                # Планируем уведомление об истечении (импортируем планировщик глобально)
                 from app.main import scheduler
                 if scheduler:
                     scheduler.schedule_subscription_notification(user.id, subscription.end_date)
                 
-                success_text = """✅ <b>Пробный ключ успешно создан!</b>
-
-🔑 Ваш ключ доступа:"""
+                await callback.message.edit_text(
+                    f"🎉 <b>VPN-ключ готов!</b>\n\n"
+                    f"⏰ Активен: {settings.trial_days} дней\n"
+                    f"📊 Трафик: {settings.trial_traffic_gb} ГБ\n\n"
+                    f"🔑 <b>Скопируйте ключ:</b>",
+                    parse_mode="HTML"
+                )
                 
-                await callback.message.edit_text(success_text, parse_mode="HTML")
-                await callback.message.answer(f"<code>{subscription.access_url}</code>", parse_mode="HTML")
+                await callback.message.answer(
+                    f"<code>{subscription.access_url}</code>",
+                    parse_mode="HTML"
+                )
                 
-                info_text = f"""📋 <b>Информация о пробном периоде:</b>
-📊 Лимит трафика: {settings.trial_traffic_gb} ГБ
-⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
-
-📱 Не забудьте скачать приложение и настроить VPN!"""
-                
-                await callback.message.answer(info_text, parse_mode="HTML")
+                from app.keyboards.main_keyboard import MainKeyboard
+                await callback.message.answer(
+                    "👆 Нажмите чтобы скопировать, затем вставьте в Outline:",
+                    reply_markup=MainKeyboard.get_trial_success_keyboard(),
+                    parse_mode="HTML"
+                )
                 
             except Exception as e:
-                await callback.answer("Ошибка при создании ключа. Попробуйте позже.", show_alert=True)
+                await callback.answer("Ошибка. Попробуйте позже.", show_alert=True)
         else:
-            # Для платных тарифов показываем кнопку оплаты
+            # Платные тарифы — показываем детали
             from app.services.payment_service import PaymentService
             payment_service = PaymentService(session)
             amount = payment_service.get_tariff_price(tariff_type)
             
-            # Рассчитываем экономию
-            monthly_price = 150  # Базовая цена за месяц
-            savings_info = ""
+            badge = f"\n{detail['badge']}" if detail.get('badge') else ""
+            savings = ""
+            if detail.get('savings'):
+                savings = f"\n💰 <b>Экономия:</b> {detail['savings']} ₽"
             
-            if tariff_type == "quarterly":
-                regular_price = monthly_price * 3
-                savings = regular_price - int(amount)
-                savings_info = f"\n💰 <b>Экономия:</b> {savings}₽ по сравнению с ежемесячной оплатой"
-            elif tariff_type == "half_yearly":
-                regular_price = monthly_price * 6
-                savings = regular_price - int(amount)
-                savings_info = f"\n💰 <b>Экономия:</b> {savings}₽ по сравнению с ежемесячной оплатой"
-            elif tariff_type == "yearly":
-                regular_price = monthly_price * 12
-                savings = regular_price - int(amount)
-                savings_info = f"\n💰 <b>Экономия:</b> {savings}₽ по сравнению с ежемесячной оплатой"
+            per_month = int(int(amount) / (detail['days'] / 30))
             
-            text = f"""📋 <b>Вы выбрали тариф:</b> {tariff_names[tariff_type]}
+            text = f"""📋 <b>{detail['name']}</b>{badge}
 
-💰 <b>Стоимость:</b> {amount} ₽{savings_info}
-🚀 <b>Преимущества:</b>
-   • Безлимитный трафик
-   • Максимальная скорость
-   • Стабильная работа 24/7
-   • Отсутствие рекламы"""
+💰 <b>Стоимость:</b> {int(amount)} ₽ ({per_month} ₽/мес){savings}
+
+🚀 <b>Что включено:</b>
+   ✅ Безлимитный трафик
+   ✅ Максимальная скорость
+   ✅ Работа 24/7 без перебоев
+   ✅ Все устройства"""
             
             await callback.message.edit_text(
                 text,
@@ -127,18 +131,20 @@ async def process_tariff_selection(callback: CallbackQuery):
                 parse_mode="HTML"
             )
 
+
 @router.callback_query(F.data == "back_to_tariffs")
 async def back_to_tariffs(callback: CallbackQuery):
     """Возврат к тарифам"""
-    text = """💰 <b>Выберите подходящий тариф:</b>
+    text = f"""💰 <b>Выберите тариф</b>
 
-🆓 <b>Пробный период</b> - 3 дня бесплатно
-   • Лимит: 10 ГБ трафика
-   • Один раз на пользователя
+🆓 <b>Пробный период</b> — бесплатно
+   {settings.trial_days} дней · {settings.trial_traffic_gb} ГБ
 
-💵 <b>Платные тарифы</b> - безлимитный трафик
-   • Полная скорость без ограничений
-   • Стабильная работа 24/7"""
+━━━━━━━━━━━━━━━━━━
+
+💵 <b>Платные тарифы</b> — безлимит
+   ✅ Скорость без ограничений
+   ✅ Работает 24/7"""
 
     await callback.message.edit_text(
         text,
@@ -146,6 +152,7 @@ async def back_to_tariffs(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
+
 def register_tariff_handlers(dp):
     """Регистрация обработчиков тарифов"""
-    dp.include_router(router) 
+    dp.include_router(router)

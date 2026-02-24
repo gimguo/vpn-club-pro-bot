@@ -1,11 +1,22 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from decimal import Decimal
+from config import settings
+
 
 class PaymentKeyboard:
     @staticmethod
     def get_payment_methods(tariff_type: str):
-        """Клавиатура для выбора способа оплаты"""
-        # Цены в Stars (рублевые цены / 3)
+        """Клавиатура для выбора способа оплаты — все методы на одном экране"""
+        # Рублевые цены из настроек
+        rub_prices = {
+            "trial": settings.trial_price,
+            "monthly": settings.monthly_price,
+            "quarterly": settings.quarterly_price,
+            "half_yearly": settings.half_yearly_price,
+            "yearly": settings.yearly_price
+        }
+        
+        # Stars цены
         stars_prices = {
             "trial": 50,
             "monthly": 50,
@@ -14,30 +25,30 @@ class PaymentKeyboard:
             "yearly": 400
         }
         
-        # Рублевые цены
-        rub_prices = {
-            "trial": 150,
-            "monthly": 150,
-            "quarterly": 350,
-            "half_yearly": 650,
-            "yearly": 1200
-        }
-        
-        stars_price = stars_prices.get(tariff_type, 0)
         rub_price = rub_prices.get(tariff_type, 0)
+        stars_price = stars_prices.get(tariff_type, 0)
         
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text=f"💳 Оплатить {rub_price}₽", callback_data=f"payment_yookassa_{tariff_type}")],
-                [InlineKeyboardButton(text="⬅️ Назад к тарифам", callback_data="back_to_tariffs")]
-            ]
-        )
+        buttons = [
+            [InlineKeyboardButton(
+                text=f"💳 Банковская карта — {rub_price} ₽", 
+                callback_data=f"payment_yookassa_{tariff_type}"
+            )],
+            [InlineKeyboardButton(
+                text=f"⭐ Telegram Stars — {stars_price} Stars", 
+                callback_data=f"payment_stars_{tariff_type}"
+            )],
+            [InlineKeyboardButton(
+                text="⬅️ Назад к тарифам", 
+                callback_data="back_to_tariffs"
+            )]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         return keyboard
 
     @staticmethod
     def get_stars_payment_confirm(tariff_type: str, amount: Decimal = None):
         """Подтверждение оплаты Stars"""
-        # Цены в Stars (рублевые цены / 3)
         stars_prices = {
             "trial": 50,
             "monthly": 50,
@@ -49,8 +60,14 @@ class PaymentKeyboard:
         stars_amount = stars_prices.get(tariff_type, 0)
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"⭐ Оплатить {stars_amount} Stars", callback_data=f"confirm_stars_{tariff_type}")],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"payment_methods_{tariff_type}")]
+                [InlineKeyboardButton(
+                    text=f"⭐ Оплатить {stars_amount} Stars", 
+                    callback_data=f"confirm_stars_{tariff_type}"
+                )],
+                [InlineKeyboardButton(
+                    text="⬅️ Другой способ", 
+                    callback_data=f"pay_{tariff_type}"
+                )]
             ]
         )
         return keyboard
@@ -60,24 +77,14 @@ class PaymentKeyboard:
         """Подтверждение оплаты картой"""
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"💳 Оплатить ${amount:.2f}", callback_data=f"confirm_card_{tariff_type}")],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"payment_methods_{tariff_type}")]
-            ]
-        )
-        return keyboard
-
-    @staticmethod
-    def get_crypto_payment_confirm(tariff_type: str, crypto_type: str, amount: Decimal):
-        """Подтверждение криптоплатежа"""
-        crypto_names = {
-            "doge": "🐕 DOGE",
-            "trx": "🔴 TRX"
-        }
-        
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text=f"Оплатить {crypto_names.get(crypto_type, crypto_type)}", callback_data=f"confirm_{crypto_type}_{tariff_type}")],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"payment_methods_{tariff_type}")]
+                [InlineKeyboardButton(
+                    text=f"💳 Оплатить ${amount:.2f}", 
+                    callback_data=f"confirm_card_{tariff_type}"
+                )],
+                [InlineKeyboardButton(
+                    text="⬅️ Другой способ", 
+                    callback_data=f"pay_{tariff_type}"
+                )]
             ]
         )
         return keyboard
@@ -87,8 +94,9 @@ class PaymentKeyboard:
         """Клавиатура после успешной оплаты"""
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="📱 Получить ключ VPN", callback_data="get_vpn_key")],
-                [InlineKeyboardButton(text="📊 Мои подписки", callback_data="my_subscriptions")],
+                [InlineKeyboardButton(text="🔑 Мой VPN-ключ", callback_data="get_vpn_key")],
+                [InlineKeyboardButton(text="📱 Скачать приложение", callback_data="download_app")],
+                [InlineKeyboardButton(text="👥 Пригласить друга", callback_data="referral_info")],
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
             ]
         )
@@ -104,61 +112,3 @@ class PaymentKeyboard:
             ]
         )
         return keyboard
-
-    @staticmethod
-    def get_payment_prices():
-        """Цены для разных способов оплаты"""
-        return {
-            "stars": {
-                "trial": Decimal("1.50"),
-                "monthly": Decimal("4.99"),
-                "quarterly": Decimal("12.99"),
-                "half_yearly": Decimal("24.99"),
-                "yearly": Decimal("49.99")
-            },
-            "card": {
-                "trial": Decimal("1.50"),
-                "monthly": Decimal("4.99"),
-                "quarterly": Decimal("12.99"),
-                "half_yearly": Decimal("24.99"),
-                "yearly": Decimal("49.99")
-            },
-            "crypto": {
-                "trial": Decimal("1.50"),
-                "monthly": Decimal("4.99"),
-                "quarterly": Decimal("12.99"),
-                "half_yearly": Decimal("24.99"),
-                "yearly": Decimal("49.99")
-            }
-        }
-
-    @staticmethod
-    def get_payment_method_info():
-        """Информация о способах оплаты"""
-        return {
-            "stars": {
-                "name": "⭐ Telegram Stars",
-                "description": "Мгновенная оплата через Telegram Stars",
-                "benefits": ["Оплата прямо в боте", "Мгновенное зачисление", "Защита от Telegram"]
-            },
-            "card": {
-                "name": "💳 Банковская карта",
-                "description": "Оплата банковской картой через Telegram",
-                "benefits": ["Безопасные платежи", "Поддержка всех карт", "Быстрое зачисление"]
-            },
-            "yookassa": {
-                "name": "🥇 YooKassa",
-                "description": "Классическая оплата в рублях",
-                "benefits": ["Привычные рубли", "Все способы оплаты", "Российский сервис"]
-            },
-            "doge": {
-                "name": "🐕 Dogecoin",
-                "description": "Оплата криптовалютой DOGE",
-                "benefits": ["Низкие комиссии", "Быстрые переводы", "Анонимность"]
-            },
-            "trx": {
-                "name": "🔴 Tron",
-                "description": "Оплата криптовалютой TRX",
-                "benefits": ["Минимальные комиссии", "Мгновенные переводы", "Блокчейн Tron"]
-            }
-        } 

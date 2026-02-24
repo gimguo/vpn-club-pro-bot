@@ -16,7 +16,7 @@ router = Router()
 @router.callback_query(F.data.startswith("pay_"))
 async def process_payment(callback: CallbackQuery):
     """Обработка выбора способа оплаты"""
-    tariff_type = callback.data.split("_")[1]
+    tariff_type = callback.data.removeprefix("pay_")
     
     # Показываем способы оплаты
     text = f"""💳 <b>Оплата подписки</b>
@@ -39,7 +39,7 @@ async def process_payment(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("payment_yookassa_"))
 async def process_yookassa_payment(callback: CallbackQuery):
     """Обработка создания платежа через YooKassa"""
-    tariff_type = callback.data.split("_")[2]
+    tariff_type = callback.data.removeprefix("payment_yookassa_")
     
     async with AsyncSessionLocal() as session:
         user_service = UserService(session)
@@ -89,7 +89,7 @@ async def process_yookassa_payment(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("payment_stars_"))
 async def process_stars_payment(callback: CallbackQuery):
     """Обработка оплаты через Telegram Stars"""
-    tariff_type = callback.data.split("_")[2]
+    tariff_type = callback.data.removeprefix("payment_stars_")
     
     async with AsyncSessionLocal() as session:
         user_service = UserService(session)
@@ -124,7 +124,7 @@ async def process_stars_payment(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("confirm_stars_"))
 async def confirm_stars_payment(callback: CallbackQuery):
     """Подтверждение оплаты через Stars"""
-    tariff_type = callback.data.split("_")[2]
+    tariff_type = callback.data.removeprefix("confirm_stars_")
     
     async with AsyncSessionLocal() as session:
         user_service = UserService(session)
@@ -169,7 +169,7 @@ async def confirm_stars_payment(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("payment_card_"))
 async def process_card_payment(callback: CallbackQuery):
     """Обработка оплаты банковской картой"""
-    tariff_type = callback.data.split("_")[2]
+    tariff_type = callback.data.removeprefix("payment_card_")
     
     async with AsyncSessionLocal() as session:
         user_service = UserService(session)
@@ -204,7 +204,7 @@ async def process_card_payment(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("confirm_card_"))
 async def confirm_card_payment(callback: CallbackQuery):
     """Подтверждение оплаты картой"""
-    tariff_type = callback.data.split("_")[2]
+    tariff_type = callback.data.removeprefix("confirm_card_")
     
     async with AsyncSessionLocal() as session:
         user_service = UserService(session)
@@ -248,7 +248,6 @@ async def confirm_card_payment(callback: CallbackQuery):
 async def check_payment_status(callback: CallbackQuery):
     """Проверка статуса платежа"""
     try:
-        # Получаем пользователя
         async with AsyncSessionLocal() as session:
             user_service = UserService(session)
             payment_service = PaymentService(session)
@@ -259,13 +258,29 @@ async def check_payment_status(callback: CallbackQuery):
                 await callback.answer("❌ Пользователь не найден")
                 return
             
+            # Проверяем: может подписка уже создана (webhook обработал раньше)
+            active_sub = await subscription_service.get_active_subscription(user.id)
+            if active_sub:
+                tariff_names = TariffKeyboard.get_tariff_names()
+                await callback.message.edit_text(
+                    f"✅ <b>Подписка уже активна!</b>\n\n"
+                    f"📦 Тариф: {tariff_names.get(active_sub.tariff_type, 'VPN')}\n"
+                    f"⏰ До: {active_sub.end_date.strftime('%d.%m.%Y')}",
+                    parse_mode="HTML"
+                )
+                await callback.message.answer(
+                    f"🔑 <b>Ваш ключ:</b>\n<code>{active_sub.access_url}</code>",
+                    parse_mode="HTML"
+                )
+                return
+            
             # Получаем последний платеж
             latest_payment = await payment_service.get_latest_payment(user.id)
             
             if not latest_payment:
                 await callback.message.edit_text(
-                    "❌ Платеж не найден. Попробуйте создать новый платеж.",
-                    reply_markup=TariffKeyboard.get_tariff_keyboard()
+                    "❌ Платеж не найден. Попробуйте создать новый.",
+                    reply_markup=TariffKeyboard.get_tariffs()
                 )
                 return
                 
@@ -273,53 +288,118 @@ async def check_payment_status(callback: CallbackQuery):
             is_paid = await payment_service.verify_payment(latest_payment.yookassa_payment_id)
             
             if is_paid:
-                # Обновляем статус платежа
                 await payment_service.update_payment_status(
-                    latest_payment.yookassa_payment_id,
-                    "succeeded"
+                    latest_payment.yookassa_payment_id, "succeeded"
                 )
                 
-                # Создаем подписку
                 subscription = await subscription_service.create_subscription(
-                    user.id, 
-                    latest_payment.tariff_type
+                    user.id, latest_payment.tariff_type
                 )
                 
-                # Планируем уведомление об истечении
                 from app.main import scheduler
                 if scheduler:
                     scheduler.schedule_subscription_notification(user.id, subscription.end_date)
                 
-                success_text = """🎉 <b>Оплата прошла успешно!</b>
-
-🔑 <b>Ваш ключ доступа:</b>"""
-                
-                await callback.message.edit_text(success_text, parse_mode="HTML")
+                await callback.message.edit_text(
+                    "🎉 <b>Оплата прошла успешно!</b>\n\n🔑 <b>Ваш ключ доступа:</b>",
+                    parse_mode="HTML"
+                )
                 await callback.message.answer(f"<code>{subscription.access_url}</code>", parse_mode="HTML")
                 
                 tariff_names = TariffKeyboard.get_tariff_names()
-                info_text = f"""📋 <b>Информация о подписке:</b>
-📦 Тариф: {tariff_names[latest_payment.tariff_type]}
-🚀 Безлимитный трафик
-⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
-
-📱 Не забудьте скачать приложение и настроить VPN!"""
-                
-                await callback.message.answer(info_text, parse_mode="HTML")
-                
+                await callback.message.answer(
+                    f"📦 Тариф: {tariff_names.get(latest_payment.tariff_type, 'VPN')}\n"
+                    f"🚀 Безлимитный трафик\n"
+                    f"⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}",
+                    parse_mode="HTML"
+                )
             else:
-                # Если платеж еще не прошел, показываем кнопку оплаты
                 await callback.message.edit_text(
-                    "⏳ Платеж еще не поступил. Нажмите кнопку ниже для оплаты.",
+                    "⏳ Платеж ещё не поступил. Нажмите кнопку для оплаты.",
                     reply_markup=TariffKeyboard.get_payment_url_button(latest_payment.payment_url)
                 )
                 
     except Exception as e:
         logger.error(f"Error checking payment: {e}")
         await callback.message.edit_text(
-            "❌ Произошла ошибка при проверке платежа. Попробуйте позже.",
-            reply_markup=TariffKeyboard.get_tariff_keyboard()
+            "❌ Ошибка при проверке платежа. Попробуйте позже.",
+            reply_markup=TariffKeyboard.get_tariffs()
         )
+
+@router.callback_query(F.data == "get_vpn_key")
+async def get_vpn_key(callback: CallbackQuery):
+    """Показать текущий VPN ключ"""
+    async with AsyncSessionLocal() as session:
+        user_service = UserService(session)
+        subscription_service = SubscriptionService(session)
+        
+        user = await user_service.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Пользователь не найден")
+            return
+        
+        active_sub = await subscription_service.get_active_subscription(user.id)
+        if not active_sub:
+            await callback.answer("❌ Нет активной подписки", show_alert=True)
+            return
+        
+        await callback.message.answer(
+            f"🔑 <b>Ваш VPN-ключ:</b>\n\n<code>{active_sub.access_url}</code>\n\n"
+            f"⏰ Активен до: {active_sub.end_date.strftime('%d.%m.%Y')}",
+            parse_mode="HTML"
+        )
+        await callback.answer()
+
+@router.callback_query(F.data == "my_subscriptions")
+async def my_subscriptions(callback: CallbackQuery):
+    """Показать подписки пользователя"""
+    async with AsyncSessionLocal() as session:
+        user_service = UserService(session)
+        subscription_service = SubscriptionService(session)
+        
+        user = await user_service.get_user_by_telegram_id(callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Пользователь не найден")
+            return
+        
+        active_sub = await subscription_service.get_active_subscription(user.id)
+        if not active_sub:
+            await callback.message.edit_text(
+                "❌ <b>Нет активной подписки</b>\n\nОформите подписку в разделе «Тарифы».",
+                reply_markup=TariffKeyboard.get_tariffs(),
+                parse_mode="HTML"
+            )
+            return
+        
+        info = await subscription_service.get_subscription_info(active_sub)
+        tariff_names = TariffKeyboard.get_tariff_names()
+        
+        text = f"📊 <b>Ваша подписка</b>\n\n"
+        text += f"📦 Тариф: {tariff_names.get(info['tariff_type'], 'VPN')}\n"
+        text += f"📅 До: {info['end_date'].strftime('%d.%m.%Y')}\n"
+        text += f"⏰ Осталось: {info['remaining_days']} дн.\n"
+        
+        if info.get('traffic_limit_gb'):
+            text += f"📊 Трафик: {info['traffic_used_gb']:.1f} / {info['traffic_limit_gb']} ГБ"
+        else:
+            text += f"🚀 Трафик: безлимитный ({info['traffic_used_gb']:.1f} ГБ использовано)"
+        
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔑 Показать ключ", callback_data="get_vpn_key")],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ])
+        
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+@router.callback_query(F.data == "cancel_payment")
+async def cancel_payment(callback: CallbackQuery):
+    """Отмена платежа"""
+    await callback.message.edit_text(
+        "❌ Платёж отменён.\n\nВыберите другой тариф:",
+        reply_markup=TariffKeyboard.get_tariffs(),
+        parse_mode="HTML"
+    )
 
 @router.pre_checkout_query()
 async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
@@ -446,7 +526,7 @@ async def process_successful_payment(message: Message):
 @router.callback_query(F.data.startswith("payment_methods_"))
 async def back_to_payment_methods(callback: CallbackQuery):
     """Возврат к выбору способа оплаты"""
-    tariff_type = callback.data.split("_")[2]
+    tariff_type = callback.data.removeprefix("payment_methods_")
     
     text = f"""💳 <b>Оплата подписки</b>
 
