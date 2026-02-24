@@ -21,8 +21,9 @@ async def init_db():
         await _run_migrations(conn)
 
 async def _run_migrations(conn):
-    """Добавляем новые колонки для реферальной системы"""
+    """Добавляем новые колонки и таблицы"""
     migrations = [
+        # Реферальная система
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code VARCHAR(20) UNIQUE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by INTEGER REFERENCES users(id)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_bonus_days INTEGER DEFAULT 0",

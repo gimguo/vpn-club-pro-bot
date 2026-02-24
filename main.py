@@ -18,6 +18,7 @@ from app.handlers import register_all_handlers
 from app.scheduler import NotificationScheduler
 from app.webhook import create_webhook_app
 from app.middleware.maintenance import MaintenanceMiddleware
+from app.vpn_forge.manager import ForgeManager
 
 # Настройка логирования
 logging.basicConfig(
@@ -26,8 +27,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Глобальные переменные для планировщика
+# Глобальные переменные
 scheduler = None
+forge_manager = None
 
 # Создаем FastAPI приложение для YooKassa webhook
 fastapi_app = FastAPI()
@@ -143,6 +145,12 @@ async def main():
     # Устанавливаем глобальную переменную планировщика в app.main для доступа из хэндлеров
     app_main.scheduler = scheduler
     
+    # Запуск VPN Forge
+    logger.info("Инициализация VPN Forge...")
+    forge_manager = ForgeManager(bot=bot)
+    forge_manager.start()
+    app_main.forge_manager = forge_manager
+    
     # Запускаем FastAPI в отдельном потоке для YooKassa webhook
     fastapi_thread = threading.Thread(target=run_fastapi, daemon=True)
     fastapi_thread.start()
@@ -185,6 +193,10 @@ async def main():
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
     finally:
+        # Остановка VPN Forge
+        if forge_manager:
+            forge_manager.stop()
+        
         # Остановка планировщика
         if scheduler:
             scheduler.stop()

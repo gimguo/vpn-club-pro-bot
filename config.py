@@ -62,6 +62,19 @@ class Settings:
     referral_bonus_days: int = int(os.getenv("REFERRAL_BONUS_DAYS", "7"))
     referral_trial_days: int = int(os.getenv("REFERRAL_TRIAL_DAYS", "7"))  # Расширенный триал по рефералу
     
+    # VPN Forge - Automated Server Management
+    vpn_forge_enabled: bool = os.getenv("VPN_FORGE_ENABLED", "false").lower() == "true"
+    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
+    openrouter_model: str = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat")
+    hetzner_api_token: str = os.getenv("HETZNER_API_TOKEN", "")
+    vpn_forge_monitor_interval: int = int(os.getenv("VPN_FORGE_MONITOR_INTERVAL", "60"))
+    vpn_forge_max_servers: int = int(os.getenv("VPN_FORGE_MAX_SERVERS", "10"))
+    vpn_forge_min_servers: int = int(os.getenv("VPN_FORGE_MIN_SERVERS", "1"))
+    vpn_forge_scale_up_threshold: int = int(os.getenv("VPN_FORGE_SCALE_UP_THRESHOLD", "70"))
+    vpn_forge_scale_down_threshold: int = int(os.getenv("VPN_FORGE_SCALE_DOWN_THRESHOLD", "30"))
+    vpn_forge_max_keys_per_server: int = int(os.getenv("VPN_FORGE_MAX_KEYS_PER_SERVER", "100"))
+    vpn_forge_ssh_key_path: str = os.getenv("VPN_FORGE_SSH_KEY_PATH", "")
+    
     # Redis
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")
     

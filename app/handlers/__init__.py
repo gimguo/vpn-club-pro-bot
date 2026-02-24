@@ -4,6 +4,7 @@ from .common import register_common_handlers
 from .payments import register_payment_handlers
 from .admin import register_admin_handlers
 from .support import register_support_handlers
+from .forge_admin import register_forge_handlers
 
 def register_all_handlers(dp):
     """Регистрация всех обработчиков"""
@@ -12,4 +13,5 @@ def register_all_handlers(dp):
     register_payment_handlers(dp)
     register_common_handlers(dp)
     register_admin_handlers(dp)
-    register_support_handlers(dp) 
+    register_support_handlers(dp)
+    register_forge_handlers(dp) 
