@@ -48,6 +48,9 @@ services:
     networks:
       - vpn_bot_network
     volumes:
+      - ./app:/app/app:ro
+      - ./main.py:/app/main.py:ro
+      - ./config.py:/app/config.py:ro
       - ./logs:/app/logs
 
   nginx:
