@@ -8,6 +8,8 @@ VPN Forge — ИИ-агент для диагностики серверов.
 import asyncio
 import logging
 import json
+import os
+from pathlib import Path
 from typing import Optional, Dict, List
 
 import aiohttp
@@ -20,6 +22,29 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Загружаем системный промпт из файла
+PROMPTS_DIR = Path(__file__).parent / "prompts"
+_system_prompt_cache: Optional[str] = None
+
+
+def _load_system_prompt() -> str:
+    """Загрузить системный промпт из MD-файла."""
+    global _system_prompt_cache
+    if _system_prompt_cache is None:
+        prompt_path = PROMPTS_DIR / "system_prompt.md"
+        if prompt_path.exists():
+            _system_prompt_cache = prompt_path.read_text(encoding="utf-8")
+            logger.info(f"AI Agent system prompt loaded ({len(_system_prompt_cache)} chars)")
+        else:
+            logger.warning(f"System prompt not found at {prompt_path}, using fallback")
+            _system_prompt_cache = (
+                "Ты — DevOps-инженер. Анализируй диагностику VPN-сервера (Outline/Shadowbox) "
+                "и предлагай bash-команды для исправления. Ответ строго в JSON: "
+                '{"diagnosis": "...", "root_cause": "...", "severity": "low|medium|high|critical", '
+                '"commands": ["cmd1", ...], "explanation": "..."}'
+            )
+    return _system_prompt_cache
 
 # Whitelist разрешённых команд (безопасность)
 ALLOWED_COMMAND_PREFIXES = [
@@ -265,28 +290,7 @@ class AIAgent:
 
     async def _consult_llm(self, server: VPNServer, diagnostics: str) -> Optional[Dict]:
         """Отправить диагностику в DeepSeek через OpenRouter."""
-        system_prompt = """Ты — опытный DevOps-инженер, специализирующийся на VPN-серверах. 
-Ты анализируешь диагностику сервера с Outline VPN (Shadowbox).
-
-Твоя задача:
-1. Определить корневую причину проблемы
-2. Предложить конкретные bash-команды для исправления
-
-ВАЖНО:
-- Давай ТОЛЬКО безопасные команды
-- НИКОГДА не предлагай rm -rf /, shutdown, reboot, mkfs, dd
-- Максимум 5 команд
-- Команды должны быть идемпотентными (безопасны при повторном выполнении)
-- Фокус на: Docker-контейнеры (shadowbox, watchtower), сеть, диск, память
-
-Ответ СТРОГО в JSON формате:
-{
-  "diagnosis": "Краткое описание проблемы на русском",
-  "root_cause": "Корневая причина",
-  "severity": "low|medium|high|critical",
-  "commands": ["команда1", "команда2", ...],
-  "explanation": "Объяснение каждой команды"
-}"""
+        system_prompt = _load_system_prompt()
 
         user_prompt = f"""Сервер: {server.name} ({server.ip_address})
 Провайдер: {server.provider}, регион: {server.region}
