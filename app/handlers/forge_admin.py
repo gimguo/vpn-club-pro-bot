@@ -7,9 +7,11 @@ VPN Forge — Админ-панель в Telegram-боте.
     forge_*    — Навигация по панели
 """
 import logging
+from datetime import datetime, timezone
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
+from aiogram.exceptions import TelegramBadRequest
 
 from config import settings
 
@@ -104,11 +106,13 @@ async def forge_refresh(callback: CallbackQuery):
     manager = ForgeManager()
     stats = await manager.get_fleet_stats()
 
+    now = datetime.now(timezone.utc).strftime("%H:%M:%S")
     text = f"""🏗️ <b>VPN Forge — Панель управления</b>
 
 🖥️ <b>Флот:</b> {stats['active']}🟢 {stats['degraded']}🟡 {stats['maintenance']}🔧 {stats['deploying']}🔵 {stats['offline']}⚫
 📊 <b>Загрузка:</b> {stats['avg_load']}% ({stats['total_keys']}/{stats['total_capacity']})
-💰 <b>Расходы:</b> ~€{stats['monthly_cost_eur']}/мес"""
+💰 <b>Расходы:</b> ~€{stats['monthly_cost_eur']}/мес
+🕐 Обновлено: {now} UTC"""
 
     if stats["servers"]:
         text += "\n"
@@ -134,8 +138,14 @@ async def forge_refresh(callback: CallbackQuery):
     ])
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
-    await callback.answer()
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            await callback.answer("Данные актуальны ✅")
+            return
+        raise
+    await callback.answer("✅ Обновлено")
 
 
 # ── Детали сервера ────────────────────────────────────────

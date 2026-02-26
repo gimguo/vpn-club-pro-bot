@@ -101,10 +101,39 @@ class OutlineDeployer:
 
     # ── Этап 2: Подготовка ОС ─────────────────────────────
 
+    async def _wait_for_dpkg_lock(self, max_wait: int = 300):
+        """Ожидание снятия блокировки dpkg (unattended-upgrades и др.)."""
+        logger.info(f"[{self.ssh.host}] Waiting for dpkg lock to be released...")
+        for i in range(max_wait // 5):
+            code, _, _ = await self.ssh.run(
+                "fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1",
+                timeout=10,
+            )
+            if code != 0:
+                # Lock свободен (fuser не нашёл процесс)
+                logger.info(f"[{self.ssh.host}] dpkg lock is free")
+                return True
+            logger.debug(f"[{self.ssh.host}] dpkg still locked, waiting... ({(i+1)*5}s)")
+            await asyncio.sleep(5)
+
+        # Принудительно останавливаем unattended-upgrades
+        logger.warning(f"[{self.ssh.host}] dpkg still locked after {max_wait}s, killing unattended-upgrades...")
+        await self.ssh.run("systemctl stop unattended-upgrades 2>/dev/null || true", timeout=30)
+        await self.ssh.run("killall -9 unattended-upgr 2>/dev/null || true", timeout=10)
+        await asyncio.sleep(5)
+        await self.ssh.run("dpkg --configure -a 2>/dev/null || true", timeout=120)
+        return True
+
     async def _prepare_os(self):
         """Базовая настройка: обновление, установка зависимостей, firewall."""
+        # Сначала ждём снятия блокировки dpkg (unattended-upgrades на свежих VPS)
+        await self._wait_for_dpkg_lock()
+
         commands = [
             "export DEBIAN_FRONTEND=noninteractive",
+            # Останавливаем unattended-upgrades чтобы не мешало
+            "systemctl stop unattended-upgrades 2>/dev/null || true",
+            "systemctl disable unattended-upgrades 2>/dev/null || true",
             # Обновление пакетов
             "apt-get update -qq",
             "apt-get upgrade -y -qq",
@@ -112,8 +141,6 @@ class OutlineDeployer:
             "apt-get install -y -qq curl wget net-tools jq ca-certificates gnupg lsb-release",
             # Часовой пояс
             "timedatectl set-timezone UTC 2>/dev/null || true",
-            # Отключаем IPv6 если мешает (опционально)
-            # "sysctl -w net.ipv6.conf.all.disable_ipv6=1",
         ]
         for cmd in commands:
             code, _, stderr = await self.ssh.run(cmd, timeout=300)
@@ -130,16 +157,25 @@ class OutlineDeployer:
             logger.info(f"[{self.ssh.host}] Docker already installed")
             return
 
-        # Устанавливаем Docker
-        install_commands = [
-            "curl -fsSL https://get.docker.com | sh",
-            "systemctl enable docker",
-            "systemctl start docker",
-        ]
-        for cmd in install_commands:
-            code, stdout, stderr = await self.ssh.run(cmd, timeout=600)
-            if code != 0:
-                logger.warning(f"[{self.ssh.host}] Docker install step warning: {stderr[:300]}")
+        # Ждём снятия блокировки dpkg перед установкой
+        await self._wait_for_dpkg_lock()
+
+        # Устанавливаем Docker с retry
+        for attempt in range(1, 4):
+            logger.info(f"[{self.ssh.host}] Docker install attempt {attempt}/3...")
+            code, stdout, stderr = await self.ssh.run(
+                "curl -fsSL https://get.docker.com | sh", timeout=600
+            )
+            if code == 0:
+                break
+            logger.warning(f"[{self.ssh.host}] Docker install attempt {attempt} failed: {stderr[:300]}")
+            if attempt < 3:
+                await self._wait_for_dpkg_lock(max_wait=120)
+                await asyncio.sleep(10)
+
+        # Включаем и запускаем
+        await self.ssh.run("systemctl enable docker", timeout=30)
+        await self.ssh.run("systemctl start docker", timeout=30)
 
         # Проверка
         code, out, _ = await self.ssh.run("docker --version", timeout=10)
