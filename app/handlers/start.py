@@ -34,8 +34,8 @@ async def cmd_start_deeplink(message: Message, command: CommandObject):
             language_code=message.from_user.language_code
         )
         
-        # Если пользователь ещё не принял условия — показываем экран согласия
-        if not getattr(user, 'terms_accepted', False):
+        # Если пользователь не завершил регистрацию (оба согласия)
+        if not getattr(user, 'terms_accepted', False) or not getattr(user, 'pd_consent', False):
             await _send_terms_consent(message, referral_code)
             return
         
@@ -71,8 +71,8 @@ async def cmd_start(message: Message):
             language_code=message.from_user.language_code
         )
         
-        # Если пользователь ещё не принял условия — показываем экран согласия
-        if not getattr(user, 'terms_accepted', False):
+        # Если пользователь не завершил регистрацию (оба согласия)
+        if not getattr(user, 'terms_accepted', False) or not getattr(user, 'pd_consent', False):
             await _send_terms_consent(message)
             return
         
@@ -85,28 +85,26 @@ async def cmd_start(message: Message):
 
 
 async def _send_terms_consent(message: Message, referral_code: str = None):
-    """Экран принятия условий и политики конфиденциальности (ФЗ-152)"""
+    """Шаг 1: Принятие Условий использования"""
     name = message.from_user.first_name or "друг"
 
     text = f"""👋 <b>{name}, добро пожаловать в VPN Club Pro!</b>
 
-Перед использованием сервиса ознакомьтесь с документами:
+Перед использованием сервиса необходимо принять два документа:
 
-📜 <b>Условия использования</b> — /terms
-🔒 <b>Политика конфиденциальности</b> — /privacy
+<b>Шаг 1 из 2:</b> 📜 <b>Условия использования</b>
 
-Нажимая «✅ Принимаю», вы подтверждаете, что:
-• Ознакомились с условиями и политикой конфиденциальности
-• Даёте согласие на обработку персональных данных (Telegram ID, имя, данные подписки) в соответствии с ФЗ-152
-• Обязуетесь использовать сервис в рамках законодательства РФ"""
+Нажимая «✅ Принимаю условия», вы подтверждаете, что:
+• Ознакомились с условиями (/terms)
+• Обязуетесь не использовать сервис для обхода блокировок
+• Обязуетесь соблюдать законодательство РФ"""
 
-    # Сохраняем реферальный код в callback_data, если есть
-    accept_data = f"accept_terms:{referral_code}" if referral_code else "accept_terms"
+    # Сохраняем реферальный код в callback_data
+    ref_suffix = f":{referral_code}" if referral_code else ""
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Принимаю", callback_data=accept_data)],
-        [InlineKeyboardButton(text="📜 Условия", callback_data="show_terms"),
-         InlineKeyboardButton(text="🔒 Конфиденц.", callback_data="show_privacy")],
+        [InlineKeyboardButton(text="✅ Принимаю условия", callback_data=f"accept_terms{ref_suffix}")],
+        [InlineKeyboardButton(text="📜 Прочитать условия", callback_data="show_terms")],
         [InlineKeyboardButton(text="❌ Отклоняю", callback_data="decline_terms")],
     ])
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)

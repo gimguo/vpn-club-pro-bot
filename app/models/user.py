@@ -14,9 +14,11 @@ class User(BaseModel):
     is_trial_used = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     
-    # Legal consent
+    # Legal consent (ФЗ-152)
     terms_accepted = Column(Boolean, default=False)
     terms_accepted_at = Column(DateTime(timezone=True), nullable=True)
+    pd_consent = Column(Boolean, default=False)          # Отдельное согласие на обработку ПД (ст.9 ФЗ-152)
+    pd_consent_at = Column(DateTime(timezone=True), nullable=True)
 
     # Referral system
     referral_code = Column(String(20), unique=True, nullable=True, index=True)
