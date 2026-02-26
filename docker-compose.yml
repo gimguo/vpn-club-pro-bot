@@ -31,10 +31,10 @@ services:
   bot:
     build: .
     container_name: vpn_bot_app
+    user: "0:0"
     env_file:
       - .env
     environment:
-      # Переопределяем DATABASE_URL и REDIS_URL для Docker-сети
       DATABASE_URL: postgresql+asyncpg://postgres:postgres_password@db:5432/vpn_club
       REDIS_URL: redis://redis:6379
     depends_on:
@@ -47,10 +47,13 @@ services:
     restart: unless-stopped
     networks:
       - vpn_bot_network
+    command: >
+      sh -c "pip install -q --no-warn-script-location asyncssh httpx 2>&1 | tail -5; echo '=== Starting bot ==='; exec python main.py"
     volumes:
-      - ./app:/app/app:ro
+      - ./app:/app/app
       - ./main.py:/app/main.py:ro
       - ./config.py:/app/config.py:ro
+      - ./requirements.txt:/app/requirements.txt:ro
       - ./logs:/app/logs
 
   nginx:
