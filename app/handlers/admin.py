@@ -49,6 +49,7 @@ async def admin_panel(message: Message):
 
 📊 <b>Основные команды:</b>
 • /stats - общая статистика
+• /users - список всех пользователей
 • /servers - информация о серверах
 • /user_info &lt;telegram_id&gt; - информация о пользователе
 
@@ -71,6 +72,168 @@ async def admin_panel(message: Message):
 • /give_key &lt;telegram_id&gt; &lt;тариф&gt; - выдать ключ пользователю"""
 
     await message.answer(text, parse_mode="HTML")
+
+@router.message(Command("users"))
+async def show_users(message: Message):
+    """Список пользователей с пагинацией"""
+    if not await is_admin(message):
+        await message.answer("❌ У вас нет прав администратора")
+        return
+
+    # Парсим номер страницы из команды: /users или /users 2
+    args = message.text.split()
+    page = int(args[1]) if len(args) > 1 and args[1].isdigit() else 1
+    await _show_users_page(message, page, edit=False)
+
+
+async def _show_users_page(target, page: int, edit: bool = False):
+    """Формирование страницы списка пользователей."""
+    PAGE_SIZE = 10
+
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select, func, desc, case
+        from app.models import User, Subscription
+
+        # Общее число пользователей
+        total_result = await session.execute(select(func.count(User.id)))
+        total = total_result.scalar() or 0
+        total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+        page = max(1, min(page, total_pages))
+        offset = (page - 1) * PAGE_SIZE
+
+        # Подзапрос: есть ли активная подписка
+        sub_active = (
+            select(func.count(Subscription.id))
+            .where(
+                Subscription.user_id == User.id,
+                Subscription.is_active == True,
+            )
+            .correlate(User)
+            .scalar_subquery()
+        )
+
+        result = await session.execute(
+            select(User, sub_active.label("active_subs"))
+            .order_by(desc(User.created_at))
+            .offset(offset)
+            .limit(PAGE_SIZE)
+        )
+        rows = result.all()
+
+        # Сводка
+        active_subs_total = await session.execute(
+            select(func.count(Subscription.id)).where(Subscription.is_active == True)
+        )
+        total_active_subs = active_subs_total.scalar() or 0
+
+    text = f"👥 <b>Пользователи</b> ({total} всего, {total_active_subs} с подпиской)\n"
+    text += f"📄 Страница {page}/{total_pages}\n\n"
+
+    for user, active_subs in rows:
+        # Иконки статуса
+        status = ""
+        if user.is_admin:
+            status += "👑"
+        if not user.is_active:
+            status += "🚫"
+        if active_subs and active_subs > 0:
+            status += "🔑"
+        elif user.is_trial_used:
+            status += "⏱️"
+
+        name = user.first_name or "—"
+        uname = f"@{user.username}" if user.username else ""
+        reg = user.created_at.strftime("%d.%m.%y") if user.created_at else "?"
+
+        text += (
+            f"{status} <b>{name}</b> {uname}\n"
+            f"    ID: <code>{user.telegram_id}</code> | {reg}"
+        )
+        if user.referral_code:
+            text += f" | ref: {user.referral_code}"
+        text += "\n"
+
+    text += f"\n👑 админ  🔑 подписка  ⏱️ триал  🚫 заблокирован"
+
+    # Кнопки пагинации
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton(text="◀️", callback_data=f"users_page_{page - 1}"))
+    nav_buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="users_noop"))
+    if page < total_pages:
+        nav_buttons.append(InlineKeyboardButton(text="▶️", callback_data=f"users_page_{page + 1}"))
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        nav_buttons,
+        [
+            InlineKeyboardButton(text="🔑 Только с подпиской", callback_data="users_filter_active"),
+            InlineKeyboardButton(text="🔄 Все", callback_data="users_page_1"),
+        ],
+    ])
+
+    if edit and hasattr(target, "message"):
+        await target.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+        await target.answer()
+    elif edit and hasattr(target, "edit_text"):
+        await target.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+    else:
+        await target.answer(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("users_page_"))
+async def users_page_callback(callback: CallbackQuery):
+    """Пагинация списка юзеров."""
+    if not (callback.from_user.id == settings.admin_id):
+        return
+    page = int(callback.data.removeprefix("users_page_"))
+    await _show_users_page(callback, page, edit=True)
+
+
+@router.callback_query(F.data == "users_filter_active")
+async def users_filter_active(callback: CallbackQuery):
+    """Показать только юзеров с активной подпиской."""
+    if not (callback.from_user.id == settings.admin_id):
+        return
+
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select, desc
+        from app.models import User, Subscription
+
+        result = await session.execute(
+            select(User, Subscription.tariff_type, Subscription.end_date)
+            .join(Subscription, Subscription.user_id == User.id)
+            .where(Subscription.is_active == True)
+            .order_by(desc(Subscription.end_date))
+            .limit(30)
+        )
+        rows = result.all()
+
+    if not rows:
+        await callback.answer("Нет пользователей с активной подпиской", show_alert=True)
+        return
+
+    text = f"🔑 <b>Пользователи с активной подпиской</b> ({len(rows)})\n\n"
+    for user, tariff, end_date in rows:
+        name = user.first_name or "—"
+        uname = f"@{user.username}" if user.username else ""
+        end = end_date.strftime("%d.%m.%y") if end_date else "?"
+        text += (
+            f"🔑 <b>{name}</b> {uname}\n"
+            f"    ID: <code>{user.telegram_id}</code> | {tariff} до {end}\n"
+        )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Все пользователи", callback_data="users_page_1")],
+    ])
+
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "users_noop")
+async def users_noop(callback: CallbackQuery):
+    await callback.answer()
+
 
 @router.message(Command("stats"))
 async def show_stats(message: Message):
