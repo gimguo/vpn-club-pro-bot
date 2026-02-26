@@ -60,8 +60,8 @@ async def forge_panel(message: Message):
 💰 <b>Расходы:</b> ~€{stats['monthly_cost_eur']}/мес
 
 ⚙️ <b>Настройки:</b>
-   Scale UP: >{settings.vpn_forge_scale_up_threshold}% → новый сервер
-   Scale DOWN: <{settings.vpn_forge_scale_down_threshold}% → убрать лишний
+   Scale UP: &gt;{settings.vpn_forge_scale_up_threshold}% → новый сервер
+   Scale DOWN: &lt;{settings.vpn_forge_scale_down_threshold}% → убрать лишний
    Max серверов: {settings.vpn_forge_max_servers}
    Monitor: каждые {settings.vpn_forge_monitor_interval}с"""
 
