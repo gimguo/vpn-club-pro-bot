@@ -55,6 +55,7 @@ services:
       - ./config.py:/app/config.py:ro
       - ./requirements.txt:/app/requirements.txt:ro
       - ./logs:/app/logs
+      - /home/andrey/.ssh/vpn_forge:/root/.ssh/vpn_forge:ro
 
   nginx:
     image: nginx:alpine
