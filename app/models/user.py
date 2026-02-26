@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, BigInteger, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, BigInteger, ForeignKey, DateTime
 from .base import BaseModel
 
 class User(BaseModel):
@@ -14,6 +14,10 @@ class User(BaseModel):
     is_trial_used = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     
+    # Legal consent
+    terms_accepted = Column(Boolean, default=False)
+    terms_accepted_at = Column(DateTime(timezone=True), nullable=True)
+
     # Referral system
     referral_code = Column(String(20), unique=True, nullable=True, index=True)
     referred_by = Column(Integer, ForeignKey("users.id"), nullable=True)

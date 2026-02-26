@@ -82,12 +82,12 @@ class MainKeyboard:
     @staticmethod
     def get_referral_keyboard(referral_link: str, referral_code: str):
         """Клавиатура для реферальной программы"""
-        share_text = f"🛡️ Лучший VPN без ограничений! Попробуй бесплатно: {referral_link}"
+        share_text = f"🔒 Защити свои данные в сети! Попробуй бесплатно: {referral_link}"
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(
                     text="📤 Поделиться ссылкой", 
-                    url=f"https://t.me/share/url?url={referral_link}&text=🛡️ Лучший VPN без ограничений! Попробуй бесплатно"
+                    url=f"https://t.me/share/url?url={referral_link}&text=🔒 Защити свои данные в сети! Попробуй бесплатно"
                 )],
                 [InlineKeyboardButton(text="📋 Скопировать код", callback_data=f"copy_ref_{referral_code}")],
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]

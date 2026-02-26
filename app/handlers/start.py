@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, CommandObject
 from app.keyboards.main_keyboard import MainKeyboard
 from app.services.user_service import UserService
@@ -34,6 +34,11 @@ async def cmd_start_deeplink(message: Message, command: CommandObject):
             language_code=message.from_user.language_code
         )
         
+        # Если пользователь ещё не принял условия — показываем экран согласия
+        if not getattr(user, 'terms_accepted', False):
+            await _send_terms_consent(message, referral_code)
+            return
+        
         # Обрабатываем реферал (только для новых юзеров без referred_by)
         referral_msg = ""
         if referral_code and not user.referred_by:
@@ -66,12 +71,45 @@ async def cmd_start(message: Message):
             language_code=message.from_user.language_code
         )
         
+        # Если пользователь ещё не принял условия — показываем экран согласия
+        if not getattr(user, 'terms_accepted', False):
+            await _send_terms_consent(message)
+            return
+        
         active_sub = await subscription_service.get_active_subscription(user.id)
     
     if active_sub:
         await _send_dashboard(message, active_sub)
     else:
         await _send_welcome(message, user)
+
+
+async def _send_terms_consent(message: Message, referral_code: str = None):
+    """Экран принятия условий и политики конфиденциальности (ФЗ-152)"""
+    name = message.from_user.first_name or "друг"
+
+    text = f"""👋 <b>{name}, добро пожаловать в VPN Club Pro!</b>
+
+Перед использованием сервиса ознакомьтесь с документами:
+
+📜 <b>Условия использования</b> — /terms
+🔒 <b>Политика конфиденциальности</b> — /privacy
+
+Нажимая «✅ Принимаю», вы подтверждаете, что:
+• Ознакомились с условиями и политикой конфиденциальности
+• Даёте согласие на обработку персональных данных (Telegram ID, имя, данные подписки) в соответствии с ФЗ-152
+• Обязуетесь использовать сервис в рамках законодательства РФ"""
+
+    # Сохраняем реферальный код в callback_data, если есть
+    accept_data = f"accept_terms:{referral_code}" if referral_code else "accept_terms"
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Принимаю", callback_data=accept_data)],
+        [InlineKeyboardButton(text="📜 Условия", callback_data="show_terms"),
+         InlineKeyboardButton(text="🔒 Конфиденц.", callback_data="show_privacy")],
+        [InlineKeyboardButton(text="❌ Отклоняю", callback_data="decline_terms")],
+    ])
+    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
 
 
 async def _send_welcome(message: Message, user, referral_msg: str = ""):
@@ -87,15 +125,15 @@ async def _send_welcome(message: Message, user, referral_msg: str = ""):
     
     welcome_text = f"""👋 <b>{name}, добро пожаловать!</b>
 
-🛡️ <b>VPN Club Pro</b> — быстрый и простой VPN
+🛡️ <b>VPN Club Pro</b> — защищённый доступ к сети
 
-Забудьте о блокировках, слежке и ограничениях.
-Подключение за <b>2 клика</b> — без регистрации и настроек.
+Ваше соединение под надёжной защитой.
+Подключение за <b>2 клика</b> — без сложных настроек.
 
-✅ Скорость без ограничений
+✅ Высокая скорость соединения
 ✅ Ноль рекламы
 ✅ Работает на всех устройствах
-✅ Серверы по всему миру{referral_msg}"""
+✅ Надёжное шифрование данных{referral_msg}"""
 
     await message.answer(welcome_text, parse_mode="HTML")
     
@@ -105,7 +143,7 @@ async def _send_welcome(message: Message, user, referral_msg: str = ""):
     else:
         action_text = f"""🚀 <b>Начните прямо сейчас!</b>
 
-Нажмите «🆓 Попробовать бесплатно» — получите VPN-ключ на <b>{trial_label}</b> за одно касание.
+Нажмите «🆓 Попробовать бесплатно» — получите ключ на <b>{trial_label}</b> за одно касание.
 
 Или выберите подписку в «🔥 Тарифы»."""
     
