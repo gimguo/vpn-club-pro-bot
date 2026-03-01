@@ -57,9 +57,13 @@ async def my_vpn_status(message: Message):
         tariff_names = TariffKeyboard.get_tariff_names()
         
         remaining = info['remaining_days']
+        is_unlimited = info['tariff_type'] == 'unlimited'
         
         # Визуальный статус-бар
-        if remaining > 7:
+        if is_unlimited:
+            status = "🟢 <b>Защита активна</b>"
+            bar = "▓▓▓▓▓▓▓▓▓▓"
+        elif remaining > 7:
             status = "🟢 <b>Защита активна</b>"
             bar = "▓▓▓▓▓▓▓▓▓▓"
         elif remaining > 3:
@@ -75,9 +79,13 @@ async def my_vpn_status(message: Message):
         text = f"""{status}
 [{bar}]
 
-📦 <b>Тариф:</b> {tariff_names.get(info['tariff_type'], 'VPN')}
-📅 <b>До:</b> {info['end_date'].strftime('%d.%m.%Y')}
-⏰ <b>Осталось:</b> {remaining} дн."""
+📦 <b>Тариф:</b> {tariff_names.get(info['tariff_type'], 'VPN')}"""
+        
+        if is_unlimited:
+            text += "\n♾ <b>Срок:</b> бессрочно"
+        else:
+            text += f"\n📅 <b>До:</b> {info['end_date'].strftime('%d.%m.%Y')}"
+            text += f"\n⏰ <b>Осталось:</b> {remaining} дн."
 
         if info.get('traffic_limit_gb'):
             used = info['traffic_used_gb']

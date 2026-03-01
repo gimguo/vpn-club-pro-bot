@@ -59,9 +59,9 @@ class VPNServer(BaseModel):
     @property
     def load_percent(self) -> float:
         """Процент загрузки по ключам"""
-        if self.max_keys <= 0:
+        if not self.max_keys or self.max_keys <= 0:
             return 100.0
-        return round((self.active_keys / self.max_keys) * 100, 1)
+        return round(((self.active_keys or 0) / self.max_keys) * 100, 1)
 
     def __repr__(self):
         return f"<VPNServer(name='{self.name}', ip='{self.ip_address}', status='{self.status}')>"

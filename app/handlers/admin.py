@@ -66,10 +66,13 @@ async def admin_panel(message: Message):
 • /support_reply &lt;номер_тикета&gt; &lt;ответ&gt; - ответить на тикет
 • /support_close &lt;номер_тикета&gt; - закрыть тикет
 
+🎁 <b>Подписки:</b>
+• /give_unlimited &lt;telegram_id&gt; - безлимитная подписка
+• /give_key &lt;telegram_id&gt; &lt;тариф&gt; - выдать ключ по тарифу
+
 🛠 <b>Сервисные команды:</b>
 • /maintenance - режим обслуживания
-• /broadcast &lt;сообщение&gt; - рассылка всем пользователям
-• /give_key &lt;telegram_id&gt; &lt;тариф&gt; - выдать ключ пользователю"""
+• /broadcast &lt;сообщение&gt; - рассылка всем пользователям"""
 
     await message.answer(text, parse_mode="HTML")
 
@@ -482,12 +485,13 @@ async def give_key(message: Message):
 • quarterly - Квартальный (90 дней)
 • half_yearly - Полугодовой (180 дней)
 • yearly - Годовой (365 дней)
+• unlimited - ♾ Безлимит (бессрочно)
 
 Пример: /give_key 123456789 monthly""", parse_mode="HTML")
         return
     
     # Проверяем правильность тарифа
-    valid_tariffs = ["trial", "monthly", "quarterly", "half_yearly", "yearly"]
+    valid_tariffs = ["trial", "monthly", "quarterly", "half_yearly", "yearly", "unlimited"]
     if tariff_type not in valid_tariffs:
         await message.answer(f"❌ Неверный тариф. Доступные: {', '.join(valid_tariffs)}")
         return
@@ -524,7 +528,8 @@ async def give_key(message: Message):
                 "monthly": "Месячный (30 дней)",
                 "quarterly": "Квартальный (90 дней)",
                 "half_yearly": "Полугодовой (180 дней)",
-                "yearly": "Годовой (365 дней)"
+                "yearly": "Годовой (365 дней)",
+                "unlimited": "♾ Безлимит (бессрочно)",
             }
             
             user_text = f"""🎉 <b>Вам выдан VPN ключ!</b>
@@ -551,6 +556,77 @@ async def give_key(message: Message):
                 
         except Exception as e:
             await message.answer(f"❌ Ошибка при создании ключа: {e}")
+
+@router.message(Command("give_unlimited"))
+async def give_unlimited(message: Message):
+    """Выдать безлимитную подписку пользователю"""
+    if not await is_admin(message):
+        await message.answer("❌ У вас нет прав администратора")
+        return
+
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer(
+            "❌ Укажите telegram_id пользователя\n\n"
+            "Использование: /give_unlimited &lt;telegram_id&gt;\n"
+            "Пример: /give_unlimited 123456789\n\n"
+            "💡 Telegram ID можно узнать через /users или /find_user",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        telegram_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ Неверный формат telegram_id")
+        return
+
+    async with AsyncSessionLocal() as session:
+        user_service = UserService(session)
+        subscription_service = SubscriptionService(session)
+
+        user = await user_service.get_user_by_telegram_id(telegram_id)
+        if not user:
+            await message.answer("❌ Пользователь не найден")
+            return
+
+        # Деактивируем текущую подписку, если есть
+        active_sub = await subscription_service.get_active_subscription(user.id)
+        if active_sub:
+            await subscription_service.deactivate_subscription(active_sub)
+
+        try:
+            await message.answer("🔄 Создаю безлимитный ключ...")
+            subscription = await subscription_service.create_subscription(user.id, "unlimited")
+
+            name = user.first_name or user.username or str(telegram_id)
+
+            await message.answer(
+                f"✅ <b>Безлимитная подписка выдана!</b>\n\n"
+                f"👤 Пользователь: {name} (<code>{telegram_id}</code>)\n"
+                f"📦 Тариф: ♾ Безлимит\n"
+                f"⏰ Действует до: бессрочно\n"
+                f"🌐 Трафик: без ограничений",
+                parse_mode="HTML",
+            )
+
+            # Уведомляем пользователя
+            try:
+                user_text = (
+                    "🎉 <b>Вам выдан VPN-ключ!</b>\n\n"
+                    "📦 Тариф: ♾ <b>Безлимит</b>\n"
+                    "⏰ Срок: <b>бессрочно</b>\n"
+                    "🌐 Трафик: <b>без ограничений</b>\n\n"
+                    f"🔑 <b>Ваш ключ:</b>\n<code>{subscription.access_url}</code>\n\n"
+                    "👆 Нажмите чтобы скопировать, затем вставьте в Outline"
+                )
+                await message.bot.send_message(telegram_id, user_text, parse_mode="HTML")
+            except Exception as e:
+                await message.answer(f"⚠️ Ключ создан, но не удалось уведомить пользователя: {e}")
+
+        except Exception as e:
+            await message.answer(f"❌ Ошибка при создании ключа: {e}")
+
 
 @router.message(Command("find_user"))
 async def find_user(message: Message):

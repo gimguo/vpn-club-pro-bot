@@ -68,7 +68,8 @@ class TariffKeyboard:
             "monthly": "1️⃣ 1 месяц",
             "quarterly": "3️⃣ 3 месяца", 
             "half_yearly": "⭐ 6 месяцев",
-            "yearly": "👑 12 месяцев"
+            "yearly": "👑 12 месяцев",
+            "unlimited": "♾ Безлимит",
         }
     
     @staticmethod

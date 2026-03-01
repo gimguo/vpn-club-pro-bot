@@ -79,12 +79,24 @@ class ServerMonitor:
 
             # ── 3. Outline API ────────────────────────────
             if server.outline_api_url:
+                # Сначала пробуем напрямую
                 check.outline_api_ok = await self._check_outline_api(server.outline_api_url)
+                
+                # Если напрямую не получилось — проверяем через SSH curl
+                if not check.outline_api_ok and ssh:
+                    check.outline_api_ok = await self._check_outline_api_via_ssh(
+                        ssh, server.outline_api_url
+                    )
+                
                 if not check.outline_api_ok:
                     details["outline_error"] = "API not responding"
 
-                # Получаем кол-во активных ключей
+                # Получаем кол-во активных ключей (через SSH если порт закрыт)
                 keys_count = await self._get_active_keys_count(server.outline_api_url)
+                if keys_count is None and ssh:
+                    keys_count = await self._get_active_keys_count_via_ssh(
+                        ssh, server.outline_api_url
+                    )
                 if keys_count is not None:
                     details["active_keys"] = keys_count
 
@@ -161,6 +173,35 @@ class ServerMonitor:
                     if resp.status == 200:
                         data = await resp.json()
                         return len(data.get("accessKeys", []))
+        except Exception:
+            pass
+        return None
+
+    async def _check_outline_api_via_ssh(self, ssh: SSHClient, api_url: str) -> bool:
+        """Проверка Outline API через SSH curl (если порт закрыт снаружи)."""
+        try:
+            # Заменяем внешний IP на localhost для curl изнутри
+            local_url = api_url.replace(f"https://{ssh.host}", "https://localhost")
+            code, stdout, _ = await ssh.run(
+                f"curl -sk -o /dev/null -w '%{{http_code}}' '{local_url}/server'",
+                timeout=15,
+            )
+            return code == 0 and stdout.strip() == "200"
+        except Exception:
+            return False
+
+    async def _get_active_keys_count_via_ssh(self, ssh: SSHClient, api_url: str) -> Optional[int]:
+        """Получить количество ключей через SSH curl."""
+        try:
+            import json as _json
+            local_url = api_url.replace(f"https://{ssh.host}", "https://localhost")
+            code, stdout, _ = await ssh.run(
+                f"curl -sk '{local_url}/access-keys'",
+                timeout=15,
+            )
+            if code == 0 and stdout:
+                data = _json.loads(stdout)
+                return len(data.get("accessKeys", []))
         except Exception:
             pass
         return None

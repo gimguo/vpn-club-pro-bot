@@ -5,6 +5,10 @@ from config import settings
 from app.models.base import Base
 import logging
 
+# Импортируем VPN Forge модели чтобы зарегистрировать их в Base.metadata
+# (основные модели загружаются через app.models.__init__)
+import app.vpn_forge.models  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 engine = create_async_engine(settings.database_url, echo=settings.debug)

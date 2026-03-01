@@ -38,18 +38,21 @@ def is_admin(user_id: int) -> bool:
 @router.message(Command("forge"))
 async def forge_panel(message: Message):
     """Главная панель VPN Forge."""
+    logger.info(f"/forge called by user {message.from_user.id} (admin={is_admin(message.from_user.id)})")
     if not is_admin(message.from_user.id):
+        await message.answer("❌ Нет доступа")
         return
 
     if not settings.vpn_forge_enabled:
         await message.answer("❌ VPN Forge отключён. Установите VPN_FORGE_ENABLED=true в .env")
         return
 
-    from app.vpn_forge.manager import ForgeManager
-    manager = ForgeManager()
-    stats = await manager.get_fleet_stats()
+    try:
+        from app.vpn_forge.manager import ForgeManager
+        manager = ForgeManager()
+        stats = await manager.get_fleet_stats()
 
-    text = f"""🏗️ <b>VPN Forge — Панель управления</b>
+        text = f"""🏗️ <b>VPN Forge — Панель управления</b>
 
 🖥️ <b>Флот серверов:</b> {stats['total']}
    🟢 Active: {stats['active']}
@@ -67,31 +70,34 @@ async def forge_panel(message: Message):
    Max серверов: {settings.vpn_forge_max_servers}
    Monitor: каждые {settings.vpn_forge_monitor_interval}с"""
 
-    # Список серверов
-    if stats["servers"]:
-        text += "\n\n<b>Серверы:</b>"
-        for s in stats["servers"]:
-            emoji = STATUS_EMOJI.get(s["status"], "❓")
-            check = s.get("last_check", "—")
-            check_emoji = {"ok": "✅", "warning": "⚠️", "critical": "❌"}.get(check, "—")
-            text += (
-                f"\n{emoji} <b>{s['name']}</b> ({s['ip']})"
-                f"\n   {s['country']} {s['region']} | {s['keys']}/{s['max_keys']} ключей | {check_emoji}"
-            )
+        # Список серверов
+        if stats["servers"]:
+            text += "\n\n<b>Серверы:</b>"
+            for s in stats["servers"]:
+                emoji = STATUS_EMOJI.get(s["status"], "❓")
+                check = s.get("last_check", "—")
+                check_emoji = {"ok": "✅", "warning": "⚠️", "critical": "❌"}.get(check, "—")
+                text += (
+                    f"\n{emoji} <b>{s['name']}</b> ({s['ip']})"
+                    f"\n   {s['country']} {s['region']} | {s['keys']}/{s['max_keys']} ключей | {check_emoji}"
+                )
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Обновить", callback_data="forge_refresh")],
-        [
-            InlineKeyboardButton(text="➕ Добавить сервер", callback_data="forge_add"),
-            InlineKeyboardButton(text="🚀 Scale UP", callback_data="forge_scale_up"),
-        ],
-        [
-            InlineKeyboardButton(text="🤖 AI Status", callback_data="forge_ai_status"),
-            InlineKeyboardButton(text="📋 Лог событий", callback_data="forge_events"),
-        ],
-    ])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Обновить", callback_data="forge_refresh")],
+            [
+                InlineKeyboardButton(text="➕ Добавить сервер", callback_data="forge_add"),
+                InlineKeyboardButton(text="🚀 Scale UP", callback_data="forge_scale_up"),
+            ],
+            [
+                InlineKeyboardButton(text="🤖 AI Status", callback_data="forge_ai_status"),
+                InlineKeyboardButton(text="📋 Лог событий", callback_data="forge_events"),
+            ],
+        ])
 
-    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+        await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+    except Exception as e:
+        logger.error(f"/forge error: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка VPN Forge:\n<code>{str(e)[:500]}</code>", parse_mode="HTML")
 
 
 # ── Обновление панели ─────────────────────────────────────

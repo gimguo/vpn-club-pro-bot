@@ -1,14 +1,18 @@
 import aiohttp
 import asyncio
+import logging
 from typing import Dict, Optional, List
 from config import settings
 import json
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
+
+
 class OutlineService:
     def __init__(self):
         self.servers = settings.outline_servers
-        print(f"🖥️ OutlineService initialized with {len(self.servers)} servers: {self.servers}")
+        logger.info(f"OutlineService initialized with {len(self.servers)} env servers")
         
     async def _make_request(self, server_url: str, method: str, endpoint: str, data: dict = None) -> dict:
         """Базовый метод для выполнения HTTP запросов к Outline API"""
@@ -62,42 +66,113 @@ class OutlineService:
         """Получение информации о сервере"""
         return await self._make_request(server_url, "GET", "server")
 
+    async def _get_forge_servers(self) -> List[Dict]:
+        """Получить список активных серверов из VPN Forge БД с приоритетом."""
+        if not settings.vpn_forge_enabled:
+            return []
+        try:
+            from sqlalchemy import select
+            from app.database import AsyncSessionLocal
+            from app.vpn_forge.models import VPNServer
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(VPNServer.outline_api_url, VPNServer.priority, VPNServer.name).where(
+                        VPNServer.status == "active",
+                        VPNServer.is_active == True,
+                        VPNServer.outline_api_url.isnot(None),
+                    ).order_by(VPNServer.priority.asc())
+                )
+                servers = [
+                    {"url": row[0], "priority": row[1] or 50, "name": row[2]}
+                    for row in result.all() if row[0]
+                ]
+                if servers:
+                    logger.info(f"VPN Forge: found {len(servers)} active servers: {[s['name'] for s in servers]}")
+                return servers
+        except Exception as e:
+            logger.warning(f"VPN Forge DB query failed, falling back to .env: {e}")
+            return []
+
     async def get_least_loaded_server(self) -> str:
-        """Получение наименее загруженного сервера на основе количества активных ключей"""
+        """Получение наименее загруженного сервера.
+        
+        Сортировка: приоритет (из БД) → количество ключей.
+        Сервер с меньшим priority выбирается первым при равной нагрузке.
+        """
+        forge_servers = await self._get_forge_servers()
+        
         server_loads = []
         
-        for server in self.servers:
-            try:
-                # Получаем список ключей на сервере
-                keys_data = await self._make_request(server, "GET", "access-keys")
-                active_keys_count = len(keys_data.get("accessKeys", []))
-                
-                server_loads.append({
-                    "server": server,
-                    "load": active_keys_count,
-                    "available": True
-                })
-                
-            except Exception as e:
-                print(f"Server {server} unavailable: {e}")
-                server_loads.append({
-                    "server": server,
-                    "load": float('inf'),  # Недоступный сервер имеет бесконечную нагрузку
-                    "available": False
-                })
+        if forge_servers:
+            # VPN Forge режим: учитываем приоритет из БД
+            for srv in forge_servers:
+                try:
+                    keys_data = await self._make_request(srv["url"], "GET", "access-keys")
+                    active_keys_count = len(keys_data.get("accessKeys", []))
+                    server_loads.append({
+                        "server": srv["url"],
+                        "name": srv["name"],
+                        "priority": srv["priority"],
+                        "load": active_keys_count,
+                        "available": True
+                    })
+                except Exception as e:
+                    logger.warning(f"Server {srv['name']} unavailable: {e}")
+                    server_loads.append({
+                        "server": srv["url"],
+                        "name": srv["name"],
+                        "priority": srv["priority"],
+                        "load": float('inf'),
+                        "available": False
+                    })
+            
+            # Сортируем: сначала по приоритету, потом по нагрузке
+            server_loads.sort(key=lambda x: (x["priority"], x["load"]))
+        else:
+            # Fallback на .env серверы
+            for server in self.servers:
+                if not server:
+                    continue
+                try:
+                    keys_data = await self._make_request(server, "GET", "access-keys")
+                    active_keys_count = len(keys_data.get("accessKeys", []))
+                    server_loads.append({
+                        "server": server,
+                        "name": "env",
+                        "priority": 50,
+                        "load": active_keys_count,
+                        "available": True
+                    })
+                except Exception as e:
+                    logger.warning(f"Server {server[:40]}... unavailable: {e}")
+                    server_loads.append({
+                        "server": server,
+                        "name": "env",
+                        "priority": 50,
+                        "load": float('inf'),
+                        "available": False
+                    })
+            server_loads.sort(key=lambda x: x["load"])
         
-        # Сортируем по нагрузке (меньше ключей = меньше нагрузка)
-        server_loads.sort(key=lambda x: x["load"])
-        
-        # Возвращаем наименее загруженный доступный сервер
+        # Возвращаем лучший доступный сервер
         for server_info in server_loads:
             if server_info["available"]:
-                print(f"Selected server {server_info['server']} with {server_info['load']} active keys")
+                logger.info(
+                    f"Selected server {server_info['name']} "
+                    f"(priority={server_info['priority']}, keys={server_info['load']})"
+                )
                 return server_info["server"]
         
-        # Если все серверы недоступны, возвращаем первый
-        print("All servers unavailable, using first server as fallback")
-        return self.servers[0]
+        # Fallback
+        if forge_servers:
+            fallback = forge_servers[0]["url"]
+        elif self.servers:
+            fallback = self.servers[0]
+        else:
+            raise RuntimeError("No Outline servers configured")
+        logger.warning(f"All servers unavailable, using fallback")
+        return fallback
 
     async def get_transfer_data(self, server_url: str) -> Dict:
         """Получение данных о трафике"""

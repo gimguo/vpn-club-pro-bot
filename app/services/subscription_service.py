@@ -76,6 +76,8 @@ class SubscriptionService:
             return start_date + timedelta(days=180)
         elif tariff_type == "yearly":
             return start_date + timedelta(days=365)
+        elif tariff_type == "unlimited":
+            return start_date + timedelta(days=36500)  # ~100 лет
         else:
             return start_date + timedelta(days=30)
 
