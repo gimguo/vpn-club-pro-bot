@@ -127,67 +127,67 @@ async def one_tap_trial(message: Message):
         return
 
     async with _subscription_locks[user_tg_id]:
-      async with AsyncSessionLocal() as session:
-        user_service = UserService(session)
-        subscription_service = SubscriptionService(session)
-        
-        user = await user_service.get_or_create_user(
-            telegram_id=message.from_user.id,
-            username=message.from_user.username,
-            first_name=message.from_user.first_name,
-            last_name=message.from_user.last_name
-        )
-        
-        # Проверка
-        if user.is_trial_used:
-            await message.answer(
-                "⚠️ <b>Пробный период уже использован</b>\n\n"
-                "Выберите подписку в «🔥 Тарифы» или пригласите друга через «👥 Друзьям» для бонусных дней!",
-                parse_mode="HTML"
+        async with AsyncSessionLocal() as session:
+            user_service = UserService(session)
+            subscription_service = SubscriptionService(session)
+
+            user = await user_service.get_or_create_user(
+                telegram_id=message.from_user.id,
+                username=message.from_user.username,
+                first_name=message.from_user.first_name,
+                last_name=message.from_user.last_name
             )
-            return
-        
-        active_sub = await subscription_service.get_active_subscription(user.id)
-        if active_sub:
-            await message.answer("✅ У вас уже есть активная подписка!")
-            return
-        
-        try:
-            # Определяем срок триала (расширенный для рефералов)
-            subscription = await subscription_service.create_subscription(user.id, "trial")
-            await user_service.mark_trial_used(user.id)
-            
-            from app.main import scheduler
-            if scheduler:
-                scheduler.schedule_subscription_notification(user.id, subscription.end_date)
-            
-            trial_days = settings.trial_days
-            if user.referred_by:
-                trial_days = settings.referral_trial_days
-            
-            await message.answer(
-                f"🎉 <b>Ваш VPN готов!</b>\n\n"
-                f"⏰ Активен: <b>{trial_days} дней</b>\n"
-                f"📊 Трафик: {settings.trial_traffic_gb} ГБ\n\n"
-                f"🔑 <b>Скопируйте ключ ниже и вставьте в приложение Outline:</b>",
-                parse_mode="HTML"
-            )
-            
-            await message.answer(
-                f"<code>{subscription.access_url}</code>",
-                parse_mode="HTML"
-            )
-            
-            await message.answer(
-                "👆 <b>Нажмите на ключ чтобы скопировать</b>\n\n"
-                "Теперь скачайте приложение и вставьте ключ:",
-                reply_markup=MainKeyboard.get_trial_success_keyboard(),
-                parse_mode="HTML"
-            )
-            
-        except Exception as e:
-            logger.error(f"Error creating trial: {e}", exc_info=True)
-            await message.answer("❌ Ошибка. Попробуйте позже или обратитесь в поддержку.")
+
+            # Проверка
+            if user.is_trial_used:
+                await message.answer(
+                    "⚠️ <b>Пробный период уже использован</b>\n\n"
+                    "Выберите подписку в «🔥 Тарифы» или пригласите друга через «👥 Друзьям» для бонусных дней!",
+                    parse_mode="HTML"
+                )
+                return
+
+            active_sub = await subscription_service.get_active_subscription(user.id)
+            if active_sub:
+                await message.answer("✅ У вас уже есть активная подписка!")
+                return
+
+            try:
+                # Определяем срок триала (расширенный для рефералов)
+                subscription = await subscription_service.create_subscription(user.id, "trial")
+                await user_service.mark_trial_used(user.id)
+
+                from app.main import scheduler
+                if scheduler:
+                    scheduler.schedule_subscription_notification(user.id, subscription.end_date)
+
+                trial_days = settings.trial_days
+                if user.referred_by:
+                    trial_days = settings.referral_trial_days
+
+                await message.answer(
+                    f"🎉 <b>Ваш VPN готов!</b>\n\n"
+                    f"⏰ Активен: <b>{trial_days} дней</b>\n"
+                    f"📊 Трафик: {settings.trial_traffic_gb} ГБ\n\n"
+                    f"🔑 <b>Скопируйте ключ ниже и вставьте в приложение Outline:</b>",
+                    parse_mode="HTML"
+                )
+
+                await message.answer(
+                    f"<code>{subscription.access_url}</code>",
+                    parse_mode="HTML"
+                )
+
+                await message.answer(
+                    "👆 <b>Нажмите на ключ чтобы скопировать</b>\n\n"
+                    "Теперь скачайте приложение и вставьте ключ:",
+                    reply_markup=MainKeyboard.get_trial_success_keyboard(),
+                    parse_mode="HTML"
+                )
+
+            except Exception as e:
+                logger.error(f"Error creating trial: {e}", exc_info=True)
+                await message.answer("❌ Ошибка. Попробуйте позже или обратитесь в поддержку.")
 
 
 # ─── Реферальная программа ──────────────────────────────────────

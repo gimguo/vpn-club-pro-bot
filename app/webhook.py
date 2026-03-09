@@ -1,12 +1,16 @@
+import json
+import hmac
+import hashlib
+import logging
+
 from aiohttp import web, ClientSession
 from app.services.payment_service import PaymentService
 from app.services.subscription_service import SubscriptionService
 from app.services.user_service import UserService
 from app.database import AsyncSessionLocal
-import json
-import hmac
-import hashlib
 from config import settings
+
+logger = logging.getLogger(__name__)
 from aiogram import Bot, Dispatcher
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiogram.client.default import DefaultBotProperties
@@ -65,12 +69,12 @@ async def yookassa_webhook(request):
                             pass
                             
                     except Exception as e:
-                        print(f"Ошибка при создании подписки: {e}")
+                        logger.error(f"Ошибка при создании подписки: {e}")
         
         return web.Response(status=200, text="OK")
         
     except Exception as e:
-        print(f"Ошибка в webhook: {e}")
+        logger.error(f"Ошибка в webhook: {e}")
         return web.Response(status=500, text="Internal Server Error")
 
 def verify_signature(body: bytes, signature: str) -> bool:

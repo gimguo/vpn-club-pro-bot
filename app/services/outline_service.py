@@ -178,7 +178,8 @@ class OutlineService:
         """Получение данных о трафике"""
         try:
             return await self._make_request(server_url, "GET", "metrics/transfer")
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to get transfer data: {e}")
             return {} 
 
     async def get_all_servers_stats(self) -> List[Dict]:

@@ -290,14 +290,17 @@ async def cancel_support(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "back_to_main")
 async def back_to_main_menu(callback: CallbackQuery):
     """Возврат в главное меню"""
-    text = """👋 <b>Главное меню</b>
-
-Выберите действие:"""
-    
+    # edit_text не поддерживает ReplyKeyboardMarkup, поэтому убираем inline-клавиатуру
+    # и отправляем новое сообщение с Reply-клавиатурой
     await callback.message.edit_text(
-        text,
+        "👋 <b>Главное меню</b>",
+        parse_mode="HTML",
+        reply_markup=None,
+    )
+    await callback.message.answer(
+        "Выберите действие:",
         reply_markup=MainKeyboard.get_main_menu(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
 async def notify_admin_new_ticket(ticket, user, message_text):
@@ -322,7 +325,7 @@ async def notify_admin_new_ticket(ticket, user, message_text):
             parse_mode="HTML"
         )
     except Exception as e:
-        print(f"Ошибка отправки уведомления админу: {e}")
+        logger.error(f"Ошибка отправки уведомления админу: {e}")
 
 def register_support_handlers(dp):
     """Регистрация обработчиков поддержки"""

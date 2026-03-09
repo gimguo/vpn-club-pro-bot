@@ -240,8 +240,8 @@ async def check_payment_status(callback: CallbackQuery):
                     from app.main import scheduler
                     if scheduler:
                         scheduler.schedule_subscription_notification(user.id, subscription.end_date)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to schedule notification: {e}")
                 
                 await callback.message.edit_text(
                     "🎉 <b>Оплата прошла успешно!</b>\n\n🔑 <b>Ваш ключ доступа:</b>",

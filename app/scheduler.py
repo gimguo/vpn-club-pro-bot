@@ -15,11 +15,14 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
+_MAX_PROCESSED_PAYMENTS = 10_000  # Предел кэша обработанных платежей
+
+
 class NotificationScheduler:
     def __init__(self, bot):
         self.bot = bot
         self.scheduler = AsyncIOScheduler()
-        self.processed_payments = set()  # Для избежания дублирования
+        self.processed_payments: set[str] = set()  # Для избежания дублирования
         
     def start(self):
         """Запуск планировщика"""
@@ -333,7 +336,10 @@ class NotificationScheduler:
                                 
                                 logger.info(f"📱 Notification sent to user {user.telegram_id}")
                             
-                            # Добавляем в список обработанных
+                            # Добавляем в список обработанных (с защитой от утечки памяти)
+                            if len(self.processed_payments) >= _MAX_PROCESSED_PAYMENTS:
+                                # Сбрасываем половину кэша (самые старые уже точно не нужны)
+                                self.processed_payments.clear()
                             self.processed_payments.add(payment_id)
                         
                         # Удаляем обработанный файл
