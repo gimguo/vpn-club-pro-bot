@@ -1,14 +1,19 @@
+import asyncio
+import logging
+from datetime import datetime
+
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+
 from app.services.user_service import UserService
 from app.services.subscription_service import SubscriptionService
 from app.database import AsyncSessionLocal
 from config import settings
-import asyncio
-from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -59,6 +64,7 @@ async def admin_panel(message: Message):
 • /remove_admin &lt;telegram_id&gt; - снять администратора
 • /block_user &lt;telegram_id&gt; - заблокировать пользователя
 • /unblock_user &lt;telegram_id&gt; - разблокировать пользователя
+• /delete_user &lt;telegram_id&gt; - 🗑 удалить пользователя (для тестов)
 
 🎫 <b>Система поддержки:</b>
 • /support_tickets - просмотр всех тикетов
@@ -850,6 +856,142 @@ async def unblock_user_command(message: Message):
 ✅ <b>Статус:</b> Активен"""
 
         await message.answer(text, parse_mode="HTML")
+
+
+@router.message(Command("delete_user"))
+async def delete_user(message: Message):
+    """Удалить пользователя для тестирования.
+
+    Что удаляется:
+      - Подписки (деактивируются + удаляются ключи Outline)
+      - Тикеты поддержки и сообщения
+      - Запись пользователя
+
+    Что сохраняется:
+      - Платежи (payments / telegram_payments) — для бухгалтерии
+    """
+    if not await is_admin(message):
+        await message.answer("❌ У вас нет прав администратора")
+        return
+
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer(
+            "❌ Укажите telegram_id пользователя\n\n"
+            "Использование: /delete_user &lt;telegram_id&gt;\n"
+            "Пример: /delete_user 123456789\n\n"
+            "⚠️ <b>Удаляет</b>: профиль, подписки, ключи, тикеты\n"
+            "✅ <b>Сохраняет</b>: историю платежей",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        telegram_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ Неверный формат telegram_id")
+        return
+
+    # Защита: нельзя удалить самого себя и главного админа
+    if telegram_id == message.from_user.id:
+        await message.answer("❌ Нельзя удалить самого себя")
+        return
+    if telegram_id == settings.admin_id:
+        await message.answer("❌ Нельзя удалить главного администратора")
+        return
+
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select, delete as sa_delete
+        from app.models import User, Subscription, Payment, TelegramPayment
+        from app.models import SupportTicket, SupportMessage
+
+        # 1. Ищем пользователя
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            await message.answer("❌ Пользователь не найден")
+            return
+
+        user_id = user.id
+        user_name = user.first_name or user.username or str(telegram_id)
+
+        # 2. Деактивируем + удаляем ключи на Outline серверах
+        subs_result = await session.execute(
+            select(Subscription).where(Subscription.user_id == user_id)
+        )
+        subs = subs_result.scalars().all()
+        deleted_keys = 0
+        for sub in subs:
+            if sub.outline_key_id and sub.outline_server_url:
+                try:
+                    from app.services.outline_service import OutlineService
+                    outline = OutlineService()
+                    await outline.delete_key(sub.outline_server_url, sub.outline_key_id)
+                    deleted_keys += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete Outline key {sub.outline_key_id}: {e}")
+
+        # 3. Удаляем подписки
+        await session.execute(
+            sa_delete(Subscription).where(Subscription.user_id == user_id)
+        )
+
+        # 4. Удаляем тикеты и сообщения поддержки
+        tickets_result = await session.execute(
+            select(SupportTicket.id).where(SupportTicket.user_id == user_id)
+        )
+        ticket_ids = [t[0] for t in tickets_result.all()]
+        if ticket_ids:
+            await session.execute(
+                sa_delete(SupportMessage).where(SupportMessage.ticket_id.in_(ticket_ids))
+            )
+            await session.execute(
+                sa_delete(SupportTicket).where(SupportTicket.user_id == user_id)
+            )
+
+        # 5. Обнуляем user_id в платежах (сохраняем записи для бухгалтерии)
+        #    Сначала убеждаемся что колонки nullable (миграция на живой БД)
+        from sqlalchemy import text, update as sa_update
+        await session.execute(text(
+            "ALTER TABLE payments ALTER COLUMN user_id DROP NOT NULL"
+        ))
+        await session.execute(text(
+            "ALTER TABLE telegram_payments ALTER COLUMN user_id DROP NOT NULL"
+        ))
+        await session.execute(
+            sa_update(Payment).where(Payment.user_id == user_id).values(user_id=None)
+        )
+        await session.execute(
+            sa_update(TelegramPayment).where(TelegramPayment.user_id == user_id).values(user_id=None)
+        )
+
+        # 6. Обнуляем реферальные ссылки на этого пользователя
+        await session.execute(
+            sa_update(User).where(User.referred_by == user_id).values(referred_by=None)
+        )
+
+        # 7. Удаляем самого пользователя
+        await session.execute(
+            sa_delete(User).where(User.id == user_id)
+        )
+
+        await session.commit()
+
+        logger.info(f"User {telegram_id} deleted by admin {message.from_user.id}")
+
+        text = (
+            f"🗑 <b>Пользователь удалён</b>\n\n"
+            f"👤 {user_name} (<code>{telegram_id}</code>)\n"
+            f"🔑 Удалено ключей Outline: {deleted_keys}\n"
+            f"📋 Удалено подписок: {len(subs)}\n"
+            f"🎫 Удалено тикетов: {len(ticket_ids)}\n\n"
+            f"✅ Платежи сохранены в БД\n"
+            f"ℹ️ Пользователь может заново нажать /start"
+        )
+        await message.answer(text, parse_mode="HTML")
+
 
 # Команды поддержки для админа
 @router.message(Command("support_tickets"))

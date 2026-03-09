@@ -5,7 +5,7 @@ from .base import BaseModel
 class Payment(BaseModel):
     __tablename__ = "payments"
     
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     yookassa_payment_id = Column(String(255), unique=True, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(3), default="RUB")

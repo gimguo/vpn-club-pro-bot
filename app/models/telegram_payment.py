@@ -5,7 +5,7 @@ from .base import BaseModel
 class TelegramPayment(BaseModel):
     __tablename__ = "telegram_payments"
     
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     telegram_payment_charge_id = Column(String(255), unique=True, nullable=False)
     
     # Детали платежа
