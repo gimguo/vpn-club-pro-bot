@@ -107,8 +107,8 @@ class PaymentKeyboard:
         """Клавиатура для ожидания оплаты"""
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Проверить оплату", callback_data="check_payment")],
-                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_payment")]
+                [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data="check_payment")],
+                [InlineKeyboardButton(text="⬅️ К тарифам", callback_data="cancel_payment")]
             ]
         )
         return keyboard

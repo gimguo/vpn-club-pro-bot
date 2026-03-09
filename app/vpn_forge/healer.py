@@ -25,6 +25,17 @@ MAX_HEAL_ATTEMPTS = 3
 class SelfHealer:
     """Автоматическое восстановление VPN-серверов."""
 
+    async def _remove_watchtower(self, ssh: SSHClient):
+        """Удалить watchtower, если он присутствует на сервере."""
+        commands = [
+            "docker stop watchtower 2>/dev/null || true",
+            "docker rm -f watchtower 2>/dev/null || true",
+            "docker rmi -f containrrr/watchtower 2>/dev/null || true",
+            "docker rmi -f nickfedor/watchtower 2>/dev/null || true",
+        ]
+        for cmd in commands:
+            await ssh.run(cmd, timeout=20)
+
     async def heal(self, server: VPNServer, check: HealthCheck,
                    session: AsyncSession) -> bool:
         """
@@ -112,8 +123,9 @@ class SelfHealer:
         """Определить список стратегий лечения по результатам проверки."""
         strategies = []
 
-        # Docker / Outline упал
+        # Docker / Outline упал — сначала пробуем пересоздать, потом рестарт Docker
         if check.ssh_ok and not check.docker_ok:
+            strategies.append({"name": "recreate_shadowbox", "fn": self._recreate_shadowbox})
             strategies.append({"name": "restart_docker_outline", "fn": self._restart_outline})
 
         # Outline API не отвечает, но Docker работает
@@ -136,6 +148,95 @@ class SelfHealer:
 
     # ── Стратегии лечения ─────────────────────────────────
 
+    async def _recreate_shadowbox(self, server: VPNServer) -> bool:
+        """Пересоздать удалённый контейнер shadowbox из сохранённого конфига."""
+        async with SSHClient(
+            host=server.ip_address,
+            username=server.ssh_user,
+            port=server.ssh_port,
+            key_path=server.ssh_key_path or settings.vpn_forge_ssh_key_path or None,
+        ) as ssh:
+            await self._remove_watchtower(ssh)
+
+            # Проверяем — может контейнер просто остановлен
+            code, out, _ = await ssh.run(
+                'docker ps -a --filter name=shadowbox --format "{{.Status}}"', timeout=5
+            )
+            if out.strip():
+                # Контейнер существует, просто запускаем
+                logger.info(f"[{server.name}] Shadowbox exists but stopped, starting...")
+                await ssh.run("docker start shadowbox", timeout=30)
+                await asyncio.sleep(10)
+                return await ssh.check_docker_container("shadowbox")
+
+            # Контейнер полностью удалён — пересоздаём
+            logger.warning(f"[{server.name}] Shadowbox container missing! Recreating...")
+
+            # Проверяем что конфиг Outline на месте
+            code, _, _ = await ssh.run(
+                "test -f /opt/outline/persisted-state/shadowbox_server_config.json", timeout=5
+            )
+            if code != 0:
+                logger.error(f"[{server.name}] Outline config missing, cannot recreate")
+                return False
+
+            # Извлекаем API порт и prefix из конфига или access.txt
+            import json as _json
+            code, config_out, _ = await ssh.run(
+                "cat /opt/outline/persisted-state/shadowbox_server_config.json", timeout=5
+            )
+            if code != 0:
+                return False
+
+            config = _json.loads(config_out.strip())
+            port_for_keys = config.get("portForNewAccessKeys", 443)
+
+            # Извлекаем API URL из access.txt
+            code, access_out, _ = await ssh.run("cat /opt/outline/access.txt", timeout=5)
+            api_port = "443"
+            api_prefix = ""
+            for line in access_out.strip().split("\n"):
+                if line.startswith("apiUrl:"):
+                    url = line.split("apiUrl:")[-1].strip()
+                    # https://IP:PORT/PREFIX
+                    parts = url.replace("https://", "").split("/", 1)
+                    if ":" in parts[0]:
+                        api_port = parts[0].split(":")[1]
+                    if len(parts) > 1:
+                        api_prefix = parts[1]
+
+            logger.info(
+                f"[{server.name}] Recreating shadowbox: api_port={api_port}, prefix={api_prefix}"
+            )
+
+            # Пересоздаём контейнер
+            docker_cmd = (
+                f"docker run -d"
+                f" --name shadowbox"
+                f" --restart=always"
+                f" --net=host"
+                f" --label=com.centurylinklabs.watchtower.enable=false"
+                f" -v /opt/outline/persisted-state:/root/shadowbox/persisted-state"
+                f' -e "SB_STATE_DIR=/root/shadowbox/persisted-state"'
+                f' -e "SB_API_PORT={api_port}"'
+                f' -e "SB_API_PREFIX={api_prefix}"'
+                f' -e "SB_CERTIFICATE_FILE=/root/shadowbox/persisted-state/shadowbox-selfsigned.crt"'
+                f' -e "SB_PRIVATE_KEY_FILE=/root/shadowbox/persisted-state/shadowbox-selfsigned.key"'
+                f' -e "SB_METRICS_URL="'
+                f" quay.io/outline/shadowbox:stable"
+            )
+
+            code, out, _ = await ssh.run(docker_cmd, timeout=60)
+            if code != 0:
+                logger.error(f"[{server.name}] Docker run failed: {out}")
+                return False
+
+            await asyncio.sleep(10)
+            ok = await ssh.check_docker_container("shadowbox")
+            if ok:
+                logger.info(f"[{server.name}] ✅ Shadowbox recreated successfully!")
+            return ok
+
     async def _restart_outline(self, server: VPNServer) -> bool:
         """Перезапустить Docker + Outline."""
         async with SSHClient(
@@ -144,12 +245,14 @@ class SelfHealer:
             port=server.ssh_port,
             key_path=server.ssh_key_path or settings.vpn_forge_ssh_key_path or None,
         ) as ssh:
+            await self._remove_watchtower(ssh)
+
             # Рестарт Docker
             await ssh.run("systemctl restart docker", timeout=60)
             await asyncio.sleep(10)
 
-            # Запуск контейнеров
-            await ssh.run("docker start shadowbox watchtower 2>/dev/null || true", timeout=30)
+            # Запуск контейнеров (без watchtower — он может удалять контейнеры)
+            await ssh.run("docker start shadowbox 2>/dev/null || true", timeout=30)
             await asyncio.sleep(10)
 
             # Проверка

@@ -67,7 +67,11 @@ class OutlineDeployer:
                 result["error"] = "Failed to parse Outline API URL from install output"
                 return result
 
-            # 5. Проверка
+            # 5. Удаляем Watchtower (install_server.sh ставит его автоматически)
+            logger.info(f"[{self.ssh.host}] Removing Watchtower (auto-installed by Outline)...")
+            await self._remove_watchtower()
+
+            # 6. Проверка
             logger.info(f"[{self.ssh.host}] Verifying Outline API...")
             if await self._verify_outline(api_url):
                 result["success"] = True
@@ -294,6 +298,23 @@ class OutlineDeployer:
         except Exception as e:
             logger.warning(f"[{self.ssh.host}] Could not get Outline config: {e}")
         return None
+
+    async def _remove_watchtower(self):
+        """
+        Удаляет Watchtower, который install_server.sh ставит автоматически.
+        
+        Watchtower проверяет Docker Hub на новые образы и при неудачном 
+        обновлении УДАЛЯЕТ контейнеры (shadowbox, x-ui) без восстановления.
+        """
+        commands = [
+            "docker stop watchtower 2>/dev/null || true",
+            "docker rm -f watchtower 2>/dev/null || true",
+            "docker rmi -f containrrr/watchtower 2>/dev/null || true",
+            "docker rmi -f nickfedor/watchtower 2>/dev/null || true",
+        ]
+        for cmd in commands:
+            await self.ssh.run(cmd, timeout=15)
+        logger.info(f"[{self.ssh.host}] Watchtower removed (prevents container deletion)")
 
     async def uninstall_outline(self):
         """Удалить Outline с сервера."""

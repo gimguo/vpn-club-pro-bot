@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from config import settings
 
 class TariffKeyboard:
@@ -33,12 +33,25 @@ class TariffKeyboard:
 
     @staticmethod
     def get_payment_button(amount: int, tariff_type: str):
-        """Кнопка для перехода к выбору способа оплаты"""
+        """Прямые кнопки оплаты без лишнего промежуточного шага"""
+        stars_prices = {
+            "trial": 50,
+            "monthly": 50,
+            "quarterly": 117,
+            "half_yearly": 217,
+            "yearly": 400,
+        }
+        stars_amount = stars_prices.get(tariff_type, 0)
+
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(
-                    text=f"💳 Оплатить {amount} ₽", 
-                    callback_data=f"pay_{tariff_type}"
+                    text=f"💳 Карта / СБП — {amount} ₽",
+                    callback_data=f"payment_yookassa_{tariff_type}"
+                )],
+                [InlineKeyboardButton(
+                    text=f"⭐ Telegram Stars — {stars_amount}",
+                    callback_data=f"payment_stars_{tariff_type}"
                 )],
                 [InlineKeyboardButton(
                     text="⬅️ Назад к тарифам", 
@@ -53,9 +66,36 @@ class TariffKeyboard:
         """Кнопка с ссылкой на оплату"""
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)],
-                [InlineKeyboardButton(text="✅ Проверить оплату", callback_data="check_payment")],
-                [InlineKeyboardButton(text="⬅️ Назад к тарифам", callback_data="back_to_tariffs")]
+                [InlineKeyboardButton(text="🔗 Перейти к оплате", url=payment_url)],
+                [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data="check_payment")],
+                [InlineKeyboardButton(text="⬅️ К тарифам", callback_data="back_to_tariffs")]
+            ]
+        )
+        return keyboard
+
+    @staticmethod
+    def get_checkout_buttons(payment_url: str, amount: int, tariff_type: str):
+        """Кнопки оплаты — web_app открывает YooKassa без диалога 'Перейти по ссылке?'."""
+        stars_prices = {
+            "monthly": 50,
+            "quarterly": 117,
+            "half_yearly": 217,
+            "yearly": 400,
+        }
+        stars_amount = stars_prices.get(tariff_type, 0)
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(
+                    text=f"💳 Оплатить {amount} ₽",
+                    web_app=WebAppInfo(url=payment_url),
+                )],
+                [InlineKeyboardButton(
+                    text=f"⭐ Stars — {stars_amount}",
+                    callback_data=f"payment_stars_{tariff_type}",
+                )],
+                [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data="check_payment")],
+                [InlineKeyboardButton(text="⬅️ К тарифам", callback_data="back_to_tariffs")],
             ]
         )
         return keyboard

@@ -229,6 +229,63 @@ class TelegramPaymentService:
         }
         return prices.get(tariff_type, Decimal("0"))
 
+    async def create_rub_payment(self, user_id: int, tariff_type: str) -> TelegramPayment:
+        """Создание платежа для нативной оплаты картой в рублях через Telegram Payments + YooKassa."""
+        rub_prices = {
+            "monthly": settings.monthly_price,
+            "quarterly": settings.quarterly_price,
+            "half_yearly": settings.half_yearly_price,
+            "yearly": settings.yearly_price,
+        }
+        amount = Decimal(str(rub_prices.get(tariff_type, 0)))
+        payload = f"rub_payment_{user_id}_{tariff_type}_{uuid.uuid4().hex[:8]}"
+
+        payment = TelegramPayment(
+            user_id=user_id,
+            telegram_payment_charge_id=payload,
+            amount=amount,
+            currency="RUB",
+            tariff_type=tariff_type,
+            payment_type="card_rub",
+            telegram_user_id=str(user_id),
+            invoice_payload=payload,
+            status="pending",
+        )
+        self.session.add(payment)
+        await self.session.commit()
+        await self.session.refresh(payment)
+        return payment
+
+    async def send_rub_invoice(self, chat_id: int, payment: TelegramPayment) -> bool:
+        """Отправить нативный Telegram invoice в рублях (YooKassa provider)."""
+        try:
+            tariff_names = {
+                "monthly": "Подписка на 1 месяц",
+                "quarterly": "Подписка на 3 месяца",
+                "half_yearly": "Подписка на 6 месяцев",
+                "yearly": "Подписка на 12 месяцев",
+            }
+            description = tariff_names.get(payment.tariff_type, "Подписка")
+            amount_kopecks = int(payment.amount * 100)
+
+            await self.bot.send_invoice(
+                chat_id=chat_id,
+                title="VPN Club Pro",
+                description=description,
+                payload=payment.invoice_payload,
+                provider_token=settings.telegram_payment_provider_token,
+                currency="RUB",
+                prices=[LabeledPrice(label=description, amount=amount_kopecks)],
+                need_name=False,
+                need_phone_number=False,
+                need_email=False,
+                need_shipping_address=False,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error sending RUB invoice: {e}", exc_info=True)
+            return False
+
     def get_tariff_price_stars(self, tariff_type: str) -> int:
         """Получение цены тарифа в Stars (в 3 раза меньше рублевых цен)"""
         # Цены в Stars (рублевые цены / 3)

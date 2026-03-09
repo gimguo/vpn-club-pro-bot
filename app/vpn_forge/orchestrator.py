@@ -5,12 +5,12 @@ VPN Forge — Оркестратор (автомасштабирование).
 - Scale Up:   средняя загрузка > threshold → арендовать новый сервер
 - Scale Down: средняя загрузка < threshold и серверов > min → удалить лишний
 - Heal:       degraded серверы → передать в Healer
-- AI:         maintenance серверы → передать в AI Agent
+- AI:         maintenance серверы → передать в AI Agent (с cooldown)
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Dict
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,11 +29,17 @@ logger = logging.getLogger(__name__)
 class Orchestrator:
     """Центральный оркестратор VPN-инфраструктуры."""
 
+    # AI Agent cooldown: не чаще 1 раза в час на сервер, макс 3 попытки в сутки
+    AI_COOLDOWN_SECONDS = 3600       # 1 час между попытками
+    AI_MAX_ATTEMPTS_PER_DAY = 3      # Макс 3 попытки в сутки на сервер
+
     def __init__(self):
         self.healer = SelfHealer()
         self.ai_agent = AIAgent()
         self._scaling_lock = asyncio.Lock()
         self._server_counter = 0  # Для генерации уникальных имён
+        # Трекинг AI-попыток: {server_id: [datetime, datetime, ...]}
+        self._ai_attempts: Dict[int, List[datetime]] = {}
 
     # ── Главный цикл ─────────────────────────────────────
 
@@ -82,20 +88,36 @@ class Orchestrator:
                 if last_check:
                     await self.healer.heal(server, last_check, session)
 
-        # ── 2. AI-диагностика maintenance серверов ────────
+        # ── 2. AI-диагностика maintenance серверов (с cooldown) ──
         for server in maintenance_servers:
-            if settings.openrouter_api_key:
-                logger.info(f"[{server.name}] Sending to AI Agent for diagnostics...")
-                ai_result = await self.ai_agent.diagnose_and_fix(server, session, auto_execute=True)
-                if ai_result.get("fixed"):
-                    logger.info(f"[{server.name}] AI Agent fixed the server!")
-                else:
-                    logger.warning(
-                        f"[{server.name}] AI Agent could not fix. "
-                        f"Diagnosis: {ai_result.get('diagnosis', 'N/A')[:100]}"
-                    )
-            else:
+            if not settings.openrouter_api_key:
                 logger.warning(f"[{server.name}] No OpenRouter API key, skipping AI diagnosis")
+                continue
+
+            # Проверяем cooldown
+            if not self._can_run_ai(server.id):
+                logger.info(
+                    f"[{server.name}] AI Agent cooldown active, skipping "
+                    f"(attempts today: {self._get_today_attempts(server.id)}/"
+                    f"{self.AI_MAX_ATTEMPTS_PER_DAY})"
+                )
+                continue
+
+            logger.info(f"[{server.name}] Sending to AI Agent for diagnostics...")
+            self._record_ai_attempt(server.id)
+
+            ai_result = await self.ai_agent.diagnose_and_fix(server, session, auto_execute=True)
+            if ai_result.get("fixed"):
+                logger.info(f"[{server.name}] AI Agent fixed the server!")
+                # Сбрасываем счётчик при успехе
+                self._ai_attempts.pop(server.id, None)
+            else:
+                attempts_left = self.AI_MAX_ATTEMPTS_PER_DAY - self._get_today_attempts(server.id)
+                logger.warning(
+                    f"[{server.name}] AI Agent could not fix. "
+                    f"Attempts left today: {attempts_left}. "
+                    f"Diagnosis: {ai_result.get('diagnosis', 'N/A')[:100]}"
+                )
 
         # ── 3. Автомасштабирование ────────────────────────
         # Учитываем только active серверы
@@ -122,6 +144,40 @@ class Orchestrator:
                   and not deploying_servers):
                 logger.info(f"📉 Scale DOWN triggered (load {avg_load:.1f}% <= {settings.vpn_forge_scale_down_threshold}%)")
                 await self._scale_down(active_servers, session)
+
+    # ── AI Agent cooldown helpers ───────────────────────────
+
+    def _can_run_ai(self, server_id: int) -> bool:
+        """Проверить, можно ли запустить AI Agent для сервера."""
+        now = datetime.now(timezone.utc)
+        attempts = self._ai_attempts.get(server_id, [])
+
+        # Очищаем старые записи (старше 24ч)
+        attempts = [t for t in attempts if now - t < timedelta(hours=24)]
+        self._ai_attempts[server_id] = attempts
+
+        # Проверяем лимит за сутки
+        if len(attempts) >= self.AI_MAX_ATTEMPTS_PER_DAY:
+            return False
+
+        # Проверяем cooldown (последняя попытка)
+        if attempts and (now - attempts[-1]).total_seconds() < self.AI_COOLDOWN_SECONDS:
+            return False
+
+        return True
+
+    def _record_ai_attempt(self, server_id: int):
+        """Записать попытку AI-диагностики."""
+        now = datetime.now(timezone.utc)
+        if server_id not in self._ai_attempts:
+            self._ai_attempts[server_id] = []
+        self._ai_attempts[server_id].append(now)
+
+    def _get_today_attempts(self, server_id: int) -> int:
+        """Количество AI-попыток за последние 24 часа."""
+        now = datetime.now(timezone.utc)
+        attempts = self._ai_attempts.get(server_id, [])
+        return len([t for t in attempts if now - t < timedelta(hours=24)])
 
     # ── Scale UP ──────────────────────────────────────────
 

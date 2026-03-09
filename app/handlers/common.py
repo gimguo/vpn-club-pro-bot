@@ -1,3 +1,4 @@
+import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from app.keyboards.main_keyboard import MainKeyboard
@@ -12,6 +13,9 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+# Защита от двойного клика: per-user lock при создании подписки
+_subscription_locks: dict[int, asyncio.Lock] = {}
 
 
 # ─── Главное меню ──────────────────────────────────────────────
@@ -109,7 +113,17 @@ async def my_vpn_status(message: Message):
 @router.message(F.text == "🆓 Попробовать бесплатно")
 async def one_tap_trial(message: Message):
     """Создание пробного ключа в одно касание"""
-    async with AsyncSessionLocal() as session:
+    # Per-user lock: защита от двойного клика
+    user_tg_id = message.from_user.id
+    if user_tg_id not in _subscription_locks:
+        _subscription_locks[user_tg_id] = asyncio.Lock()
+    
+    if _subscription_locks[user_tg_id].locked():
+        await message.answer("⏳ Подождите, ваш запрос обрабатывается...")
+        return
+
+    async with _subscription_locks[user_tg_id]:
+      async with AsyncSessionLocal() as session:
         user_service = UserService(session)
         subscription_service = SubscriptionService(session)
         

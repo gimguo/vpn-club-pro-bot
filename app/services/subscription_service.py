@@ -15,11 +15,11 @@ class SubscriptionService:
     async def create_subscription(self, user_id: int, tariff_type: str) -> Subscription:
         """Создание новой подписки"""
         
-        # Если это платная подписка, проверяем и деактивируем активную триал подписку
-        if tariff_type != "trial":
-            existing_subscription = await self.get_active_subscription(user_id)
-            if existing_subscription and existing_subscription.tariff_type == "trial":
-                await self.deactivate_subscription(existing_subscription)
+        # Деактивируем ВСЕ старые активные подписки перед созданием новой
+        # (защита от дубликатов и корректная замена trial → платная)
+        existing_subs = await self._get_all_active_subscriptions(user_id)
+        for existing_sub in existing_subs:
+            await self.deactivate_subscription(existing_sub)
         
         # Получаем наименее загруженный сервер
         server_url = await self.outline_service.get_least_loaded_server()
@@ -92,9 +92,22 @@ class SubscriptionService:
                     Subscription.end_date > datetime.now(pytz.UTC)
                 )
             )
-            .order_by(Subscription.end_date.desc())
+            .order_by(Subscription.created_at.desc())
         )
         return result.scalars().first()
+
+    async def _get_all_active_subscriptions(self, user_id: int) -> List[Subscription]:
+        """Получение ВСЕХ активных подписок пользователя (для деактивации дубликатов)"""
+        result = await self.session.execute(
+            select(Subscription)
+            .where(
+                and_(
+                    Subscription.user_id == user_id,
+                    Subscription.is_active == True,
+                )
+            )
+        )
+        return result.scalars().all()
 
     async def get_expiring_subscriptions(self, days_before: int = 3) -> List[Subscription]:
         """Получение подписок, истекающих через указанное количество дней"""

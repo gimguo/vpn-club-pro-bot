@@ -1,12 +1,19 @@
+import asyncio
+import logging
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from app.keyboards.tariff_keyboard import TariffKeyboard
 from app.services.user_service import UserService
 from app.services.subscription_service import SubscriptionService
 from app.database import AsyncSessionLocal
 from config import settings
 
+logger = logging.getLogger(__name__)
+
 router = Router()
+
+# Защита от двойного клика при создании подписки
+_tariff_locks: dict[int, asyncio.Lock] = {}
 
 
 @router.message(F.text.in_({"🔥 Тарифы", "🔥 Продлить"}))
@@ -44,7 +51,17 @@ async def process_tariff_selection(callback: CallbackQuery):
         await callback.answer("Тариф не найден", show_alert=True)
         return
     
-    async with AsyncSessionLocal() as session:
+    # Защита от двойного клика
+    user_tg_id = callback.from_user.id
+    if user_tg_id not in _tariff_locks:
+        _tariff_locks[user_tg_id] = asyncio.Lock()
+    
+    if _tariff_locks[user_tg_id].locked():
+        await callback.answer("⏳ Подождите, запрос обрабатывается...", show_alert=True)
+        return
+
+    async with _tariff_locks[user_tg_id]:
+     async with AsyncSessionLocal() as session:
         user_service = UserService(session)
         subscription_service = SubscriptionService(session)
         
@@ -103,33 +120,68 @@ async def process_tariff_selection(callback: CallbackQuery):
             except Exception as e:
                 await callback.answer("Ошибка. Попробуйте позже.", show_alert=True)
         else:
-            # Платные тарифы — показываем детали
+            # ── Платные тарифы ──────────────────────────────
             from app.services.payment_service import PaymentService
+            from app.services.telegram_payment_service import TelegramPaymentService
             payment_service = PaymentService(session)
             amount = payment_service.get_tariff_price(tariff_type)
-            
+
             badge = f"\n{detail['badge']}" if detail.get('badge') else ""
             savings = ""
             if detail.get('savings'):
                 savings = f"\n💰 <b>Экономия:</b> {detail['savings']} ₽"
-            
             per_month = int(int(amount) / (detail['days'] / 30))
-            
-            text = f"""📋 <b>{detail['name']}</b>{badge}
+
+            try:
+                if settings.telegram_payment_provider_token:
+                    # ── Нативный Telegram Payment (3 клика) ──
+                    tg_ps = TelegramPaymentService(session, callback.bot)
+                    payment = await tg_ps.create_rub_payment(user.id, tariff_type)
+
+                    text = f"""📋 <b>{detail['name']}</b>{badge}
 
 💰 <b>Стоимость:</b> {int(amount)} ₽ ({per_month} ₽/мес){savings}
 
-🚀 <b>Что включено:</b>
-   ✅ Безлимитный трафик
-   ✅ Максимальная скорость
-   ✅ Работа 24/7 без перебоев
-   ✅ Все устройства"""
-            
-            await callback.message.edit_text(
-                text,
-                reply_markup=TariffKeyboard.get_payment_button(int(amount), tariff_type),
-                parse_mode="HTML"
-            )
+✅ Безлимитный трафик · Макс. скорость · Все устройства
+
+⬇️ Нажмите <b>Оплатить</b> в сообщении ниже:"""
+
+                    stars_prices = {"monthly": 50, "quarterly": 117, "half_yearly": 217, "yearly": 400}
+                    stars_amount = stars_prices.get(tariff_type, 0)
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(
+                            text=f"⭐ Или Stars — {stars_amount}",
+                            callback_data=f"payment_stars_{tariff_type}"
+                        )],
+                        [InlineKeyboardButton(text="⬅️ К тарифам", callback_data="back_to_tariffs")],
+                    ])
+                    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+                    await tg_ps.send_rub_invoice(callback.message.chat.id, payment)
+                else:
+                    # ── Fallback: YooKassa redirect (web_app — без диалога «Перейти?») ──
+                    payment = await payment_service.create_payment(
+                        user_id=user.id,
+                        amount=amount,
+                        tariff_type=tariff_type,
+                        return_url=f"https://t.me/{settings.bot_username}"
+                    )
+
+                    text = f"""📋 <b>{detail['name']}</b>{badge}
+
+💰 <b>Стоимость:</b> {int(amount)} ₽ ({per_month} ₽/мес){savings}
+
+✅ Безлимитный трафик · Макс. скорость · Все устройства"""
+
+                    await callback.message.edit_text(
+                        text,
+                        reply_markup=TariffKeyboard.get_checkout_buttons(
+                            payment.payment_url, int(amount), tariff_type
+                        ),
+                        parse_mode="HTML"
+                    )
+            except Exception as e:
+                logger.error(f"Payment creation failed for {tariff_type}: {e}", exc_info=True)
+                await callback.answer("❌ Ошибка при создании платежа. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "back_to_tariffs")
