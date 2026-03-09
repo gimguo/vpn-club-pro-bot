@@ -217,7 +217,7 @@ class NotificationScheduler:
                 return
                 
             # Получаем все файлы webhook
-            webhook_files = [f for f in os.listdir(webhook_dir) if f.startswith("payment_") and f.endswith(".json")]
+            webhook_files = [f for f in os.listdir(webhook_dir) if f.startswith("payment") and f.endswith(".json")]
             
             if not webhook_files:
                 return
@@ -242,6 +242,17 @@ class NotificationScheduler:
                             webhook_data = json.load(f)
                         
                         payment_id = webhook_data["payment_id"]
+                        event_type = webhook_data.get("event", "")
+                        
+                        # ── Обрабатываем ТОЛЬКО succeeded ──
+                        if event_type != "payment.succeeded":
+                            print(f"⏭️ Пропускаем webhook {event_type} для платежа {payment_id}")
+                            if event_type == "payment.canceled":
+                                await payment_service.update_payment_status(payment_id, "canceled")
+                                print(f"❌ Payment {payment_id} marked as canceled")
+                            os.remove(file_path)
+                            print(f"🗑️ Webhook file removed: {webhook_file}")
+                            continue
                         
                         # Проверяем, не обрабатывался ли этот платеж уже
                         if payment_id in self.processed_payments:
@@ -249,13 +260,20 @@ class NotificationScheduler:
                             os.remove(file_path)
                             continue
                         
-                        print(f"💳 Обрабатываем webhook для платежа: {payment_id}")
+                        print(f"💳 Обрабатываем succeeded webhook для платежа: {payment_id}")
+                        
+                        # Дополнительная проверка через API YooKassa
+                        is_really_paid = await payment_service.verify_payment(payment_id)
+                        if not is_really_paid:
+                            print(f"⚠️ Payment {payment_id} не подтверждён через API YooKassa, пропускаем")
+                            os.remove(file_path)
+                            continue
                         
                         # Обновляем статус платежа
                         payment = await payment_service.update_payment_status(payment_id, "succeeded")
                         
                         if payment:
-                            print(f"✅ Payment {payment_id} marked as succeeded")
+                            print(f"✅ Payment {payment_id} marked as succeeded (verified)")
                             
                             # Создаем подписку
                             subscription = await subscription_service.create_subscription(

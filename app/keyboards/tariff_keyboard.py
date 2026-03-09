@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from config import settings
 
 class TariffKeyboard:
@@ -75,7 +75,7 @@ class TariffKeyboard:
 
     @staticmethod
     def get_checkout_buttons(payment_url: str, amount: int, tariff_type: str):
-        """Кнопки оплаты — web_app открывает YooKassa без диалога 'Перейти по ссылке?'."""
+        """Кнопки оплаты — URL кнопка ведёт прямо на YooKassa."""
         stars_prices = {
             "monthly": 50,
             "quarterly": 117,
@@ -88,7 +88,7 @@ class TariffKeyboard:
             inline_keyboard=[
                 [InlineKeyboardButton(
                     text=f"💳 Оплатить {amount} ₽",
-                    web_app=WebAppInfo(url=payment_url),
+                    url=payment_url,
                 )],
                 [InlineKeyboardButton(
                     text=f"⭐ Stars — {stars_amount}",
