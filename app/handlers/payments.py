@@ -186,10 +186,11 @@ async def check_payment_status(callback: CallbackQuery):
             active_sub = await subscription_service.get_active_subscription(user.id)
             if active_sub:
                 tariff_names = TariffKeyboard.get_tariff_names()
+                end_str = "♾ бессрочно" if active_sub.tariff_type == "unlimited" else active_sub.end_date.strftime('%d.%m.%Y')
                 await callback.message.edit_text(
                     f"✅ <b>Подписка уже активна!</b>\n\n"
                     f"📦 Тариф: {tariff_names.get(active_sub.tariff_type, 'VPN')}\n"
-                    f"⏰ До: {active_sub.end_date.strftime('%d.%m.%Y')}",
+                    f"⏰ До: {end_str}",
                     parse_mode="HTML"
                 )
                 await callback.message.answer(
@@ -220,10 +221,11 @@ async def check_payment_status(callback: CallbackQuery):
                 existing_sub = await subscription_service.get_active_subscription(user.id)
                 if existing_sub:
                     tariff_names = TariffKeyboard.get_tariff_names()
+                    end_str = "♾ бессрочно" if existing_sub.tariff_type == "unlimited" else existing_sub.end_date.strftime('%d.%m.%Y')
                     await callback.message.edit_text(
                         f"✅ <b>Подписка уже активна!</b>\n\n"
                         f"📦 Тариф: {tariff_names.get(existing_sub.tariff_type, 'VPN')}\n"
-                        f"⏰ До: {existing_sub.end_date.strftime('%d.%m.%Y')}",
+                        f"⏰ До: {end_str}",
                         parse_mode="HTML"
                     )
                     await callback.message.answer(
@@ -250,10 +252,11 @@ async def check_payment_status(callback: CallbackQuery):
                 await callback.message.answer(f"<code>{subscription.access_url}</code>", parse_mode="HTML")
                 
                 tariff_names = TariffKeyboard.get_tariff_names()
+                end_str = "♾ бессрочно" if subscription.tariff_type == "unlimited" else subscription.end_date.strftime('%d.%m.%Y')
                 await callback.message.answer(
                     f"📦 Тариф: {tariff_names.get(latest_payment.tariff_type, 'VPN')}\n"
                     f"🚀 Безлимитный трафик\n"
-                    f"⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}",
+                    f"⏰ Активна до: {end_str}",
                     parse_mode="HTML"
                 )
             else:
@@ -286,9 +289,10 @@ async def get_vpn_key(callback: CallbackQuery):
             await callback.answer("❌ Нет активной подписки", show_alert=True)
             return
         
+        end_str = "♾ бессрочно" if active_sub.tariff_type == "unlimited" else active_sub.end_date.strftime('%d.%m.%Y')
         await callback.message.answer(
             f"🔑 <b>Ваш VPN-ключ:</b>\n\n<code>{active_sub.access_url}</code>\n\n"
-            f"⏰ Активен до: {active_sub.end_date.strftime('%d.%m.%Y')}",
+            f"⏰ Активен до: {end_str}",
             parse_mode="HTML"
         )
         await callback.answer()
@@ -453,9 +457,10 @@ async def process_successful_payment(message: Message):
             await message.reply(success_text, parse_mode="HTML")
             await message.reply(f"<code>{subscription.access_url}</code>", parse_mode="HTML")
             
+            end_str = "♾ бессрочно" if subscription.tariff_type == "unlimited" else subscription.end_date.strftime('%d.%m.%Y')
             info_text = f"""📋 <b>Информация о подписке:</b>
 🚀 Безлимитный трафик
-⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
+⏰ Активна до: {end_str}
 
 📱 Не забудьте скачать приложение и настроить VPN!"""
             

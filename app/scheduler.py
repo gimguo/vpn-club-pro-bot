@@ -308,10 +308,11 @@ class NotificationScheduler:
                                 if payment.tariff_type == "trial":
                                     traffic_info = f"📊 Лимит: {settings.trial_traffic_gb} ГБ"
                                 
+                                end_str = "♾ бессрочно" if payment.tariff_type == "unlimited" else subscription.end_date.strftime('%d.%m.%Y')
                                 info_text = f"""📋 <b>Информация о подписке:</b>
 📦 Тариф: {tariff_names[payment.tariff_type]}
 {traffic_info}
-⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
+⏰ Активна до: {end_str}
 
 📱 Не забудьте скачать приложение и настроить VPN!"""
                                 

@@ -205,13 +205,22 @@ async def users_filter_active(callback: CallbackQuery):
         return
 
     async with AsyncSessionLocal() as session:
-        from sqlalchemy import select, desc
+        from sqlalchemy import select, desc, and_, or_
         from app.models import User, Subscription
+        from datetime import datetime
+        import pytz
+
+        now = datetime.now(pytz.UTC)
 
         result = await session.execute(
             select(User, Subscription.tariff_type, Subscription.end_date)
             .join(Subscription, Subscription.user_id == User.id)
-            .where(Subscription.is_active == True)
+            .where(
+                and_(
+                    Subscription.is_active == True,
+                    Subscription.end_date > now,
+                )
+            )
             .order_by(desc(Subscription.end_date))
             .limit(30)
         )
@@ -225,10 +234,14 @@ async def users_filter_active(callback: CallbackQuery):
     for user, tariff, end_date in rows:
         name = user.first_name or "—"
         uname = f"@{user.username}" if user.username else ""
-        end = end_date.strftime("%d.%m.%y") if end_date else "?"
+        if tariff == "unlimited":
+            end_str = "♾ бессрочно"
+        else:
+            end = end_date.strftime("%d.%m.%Y") if end_date else "?"
+            end_str = f"до {end}"
         text += (
             f"🔑 <b>{name}</b> {uname}\n"
-            f"    ID: <code>{user.telegram_id}</code> | {tariff} до {end}\n"
+            f"    ID: <code>{user.telegram_id}</code> | {tariff} {end_str}\n"
         )
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -391,9 +404,10 @@ async def user_info(message: Message):
 🔑 <b>Подписка:</b>"""
 
         if subscription:
+            end_str = "♾ бессрочно" if subscription.tariff_type == "unlimited" else subscription.end_date.strftime('%d.%m.%Y')
             text += f"""
 📦 Тариф: {subscription.tariff_type}
-⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
+⏰ Активна до: {end_str}
 🌐 Сервер: {subscription.outline_server_url or 'Не указан'}"""
         else:
             text += "\n❌ Нет активной подписки"
@@ -538,10 +552,11 @@ async def give_key(message: Message):
                 "unlimited": "♾ Безлимит (бессрочно)",
             }
             
+            end_str = "♾ бессрочно" if tariff_type == "unlimited" else subscription.end_date.strftime('%d.%m.%Y')
             user_text = f"""🎉 <b>Вам выдан VPN ключ!</b>
 
 📦 Тариф: {tariff_names[tariff_type]}
-⏰ Активна до: {subscription.end_date.strftime('%d.%m.%Y')}
+⏰ Активна до: {end_str}
 
 🔑 <b>Ваш ключ:</b>
 <code>{subscription.access_url}</code>
