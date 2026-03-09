@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from app.keyboards.tariff_keyboard import TariffKeyboard
 from app.services.user_service import UserService
 from app.services.subscription_service import SubscriptionService
@@ -12,15 +12,14 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
-# Защита от двойного клика при создании подписки
+# Защита от двойного клика при создании подписки (ограничено 500 записей)
 _tariff_locks: dict[int, asyncio.Lock] = {}
+_MAX_LOCKS = 500
 
 
 @router.message(F.text.in_({"🔥 Тарифы", "🔥 Продлить"}))
 async def show_tariffs(message: Message):
     """Показать тарифы"""
-    monthly = settings.monthly_price
-    
     text = f"""💰 <b>Выберите тариф</b>
 
 🆓 <b>Пробный период</b> — бесплатно
@@ -54,6 +53,8 @@ async def process_tariff_selection(callback: CallbackQuery):
     # Защита от двойного клика
     user_tg_id = callback.from_user.id
     if user_tg_id not in _tariff_locks:
+        if len(_tariff_locks) >= _MAX_LOCKS:
+            _tariff_locks.clear()
         _tariff_locks[user_tg_id] = asyncio.Lock()
     
     if _tariff_locks[user_tg_id].locked():
@@ -146,8 +147,7 @@ async def process_tariff_selection(callback: CallbackQuery):
 
 ⬇️ Нажмите <b>Оплатить</b> в сообщении ниже:"""
 
-                    stars_prices = {"monthly": 50, "quarterly": 117, "half_yearly": 217, "yearly": 400}
-                    stars_amount = stars_prices.get(tariff_type, 0)
+                    stars_amount = TariffKeyboard.get_stars_prices().get(tariff_type, 0)
                     kb = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(
                             text=f"⭐ Или Stars — {stars_amount}",

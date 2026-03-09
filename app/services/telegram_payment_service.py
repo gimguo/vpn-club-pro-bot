@@ -287,21 +287,9 @@ class TelegramPaymentService:
             return False
 
     def get_tariff_price_stars(self, tariff_type: str) -> int:
-        """Получение цены тарифа в Stars (в 3 раза меньше рублевых цен)"""
-        # Цены в Stars (рублевые цены / 3)
-        # Пробный: 150₽ / 3 = 50⭐
-        # Месяц: 150₽ / 3 = 50⭐
-        # 3 месяца: 350₽ / 3 = 117⭐
-        # 6 месяцев: 650₽ / 3 = 217⭐
-        # 12 месяцев: 1200₽ / 3 = 400⭐
-        prices = {
-            "trial": 50,
-            "monthly": 50,
-            "quarterly": 117,
-            "half_yearly": 217,
-            "yearly": 400
-        }
-        return prices.get(tariff_type, 0)
+        """Получение цены тарифа в Telegram Stars"""
+        from app.keyboards.tariff_keyboard import TariffKeyboard
+        return TariffKeyboard.get_stars_prices().get(tariff_type, 0)
 
     async def update_payment_status(self, payment_id: int, status: str) -> Optional[TelegramPayment]:
         """Обновление статуса платежа"""

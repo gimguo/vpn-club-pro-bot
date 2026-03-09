@@ -1,11 +1,16 @@
+import logging
+from datetime import datetime, timedelta
+from typing import Optional, List
+
+import pytz
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
+
 from app.models import Subscription, User
 from app.services.outline_service import OutlineService
 from config import settings
-from datetime import datetime, timedelta
-from typing import Optional, List
-import pytz
+
+logger = logging.getLogger(__name__)
 
 class SubscriptionService:
     def __init__(self, session: AsyncSession):
@@ -148,7 +153,7 @@ class SubscriptionService:
                 subscription.outline_key_id
             )
         except Exception as e:
-            print(f"Ошибка при удалении ключа: {e}")
+            logger.error(f"Ошибка при удалении ключа из Outline: {e}")
         
         # Деактивируем подписку в БД
         subscription.is_active = False
@@ -184,7 +189,7 @@ class SubscriptionService:
                 "is_active": subscription.is_active and subscription.end_date > now
             }
         except Exception as e:
-            print(f"Ошибка при получении информации о подписке: {e}")
+            logger.error(f"Ошибка при получении информации о подписке: {e}")
             return {
                 "tariff_type": subscription.tariff_type,
                 "end_date": subscription.end_date,

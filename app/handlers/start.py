@@ -155,12 +155,15 @@ async def _send_welcome(message: Message, user, referral_msg: str = ""):
 async def _send_dashboard(message: Message, subscription):
     """Отправка дашборда для пользователей с активной подпиской"""
     from app.keyboards.tariff_keyboard import TariffKeyboard
+    from datetime import datetime as dt
+    import pytz as _pytz
     tariff_names = TariffKeyboard.get_tariff_names()
     
-    remaining = (subscription.end_date - __import__('datetime').datetime.now(__import__('pytz').UTC)).days
+    is_unlimited = subscription.tariff_type == "unlimited"
+    remaining = (subscription.end_date - dt.now(_pytz.UTC)).days
     
     # Визуальный статус
-    if remaining > 7:
+    if is_unlimited or remaining > 7:
         status_icon = "🟢"
         status_text = "Защита активна"
     elif remaining > 1:
@@ -172,9 +175,13 @@ async def _send_dashboard(message: Message, subscription):
     
     dashboard = f"""{status_icon} <b>{status_text}</b>
 
-📦 Тариф: {tariff_names.get(subscription.tariff_type, 'VPN')}
-📅 До: {subscription.end_date.strftime('%d.%m.%Y')}
-⏰ Осталось: {max(0, remaining)} дн."""
+📦 Тариф: {tariff_names.get(subscription.tariff_type, 'VPN')}"""
+
+    if is_unlimited:
+        dashboard += "\n♾ Срок: бессрочно"
+    else:
+        dashboard += f"\n📅 До: {subscription.end_date.strftime('%d.%m.%Y')}"
+        dashboard += f"\n⏰ Осталось: {max(0, remaining)} дн."
 
     if subscription.traffic_limit_gb:
         used = subscription.traffic_used_gb or 0

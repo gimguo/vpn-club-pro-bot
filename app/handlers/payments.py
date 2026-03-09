@@ -216,13 +216,32 @@ async def check_payment_status(callback: CallbackQuery):
                     latest_payment.yookassa_payment_id, "succeeded"
                 )
                 
+                # Перепроверяем: может webhook уже создал подписку пока мы проверяли
+                existing_sub = await subscription_service.get_active_subscription(user.id)
+                if existing_sub:
+                    tariff_names = TariffKeyboard.get_tariff_names()
+                    await callback.message.edit_text(
+                        f"✅ <b>Подписка уже активна!</b>\n\n"
+                        f"📦 Тариф: {tariff_names.get(existing_sub.tariff_type, 'VPN')}\n"
+                        f"⏰ До: {existing_sub.end_date.strftime('%d.%m.%Y')}",
+                        parse_mode="HTML"
+                    )
+                    await callback.message.answer(
+                        f"🔑 <b>Ваш ключ:</b>\n<code>{existing_sub.access_url}</code>",
+                        parse_mode="HTML"
+                    )
+                    return
+                
                 subscription = await subscription_service.create_subscription(
                     user.id, latest_payment.tariff_type
                 )
                 
-                from app.main import scheduler
-                if scheduler:
-                    scheduler.schedule_subscription_notification(user.id, subscription.end_date)
+                try:
+                    from app.main import scheduler
+                    if scheduler:
+                        scheduler.schedule_subscription_notification(user.id, subscription.end_date)
+                except Exception:
+                    pass
                 
                 await callback.message.edit_text(
                     "🎉 <b>Оплата прошла успешно!</b>\n\n🔑 <b>Ваш ключ доступа:</b>",
@@ -298,10 +317,15 @@ async def my_subscriptions(callback: CallbackQuery):
         info = await subscription_service.get_subscription_info(active_sub)
         tariff_names = TariffKeyboard.get_tariff_names()
         
+        is_unlimited = info['tariff_type'] == 'unlimited'
+
         text = f"📊 <b>Ваша подписка</b>\n\n"
         text += f"📦 Тариф: {tariff_names.get(info['tariff_type'], 'VPN')}\n"
-        text += f"📅 До: {info['end_date'].strftime('%d.%m.%Y')}\n"
-        text += f"⏰ Осталось: {info['remaining_days']} дн.\n"
+        if is_unlimited:
+            text += "♾ Срок: бессрочно\n"
+        else:
+            text += f"📅 До: {info['end_date'].strftime('%d.%m.%Y')}\n"
+            text += f"⏰ Осталось: {info['remaining_days']} дн.\n"
         
         if info.get('traffic_limit_gb'):
             text += f"📊 Трафик: {info['traffic_used_gb']:.1f} / {info['traffic_limit_gb']} ГБ"
@@ -446,28 +470,6 @@ async def process_successful_payment(message: Message):
     except Exception as e:
         logger.error(f"❌ [SUCCESS_PAYMENT] Error processing successful payment: {e}", exc_info=True)
         await message.reply(f"❌ Произошла ошибка при обработке платежа: {str(e)[:100]}")
-
-@router.callback_query(F.data.startswith("payment_methods_"))
-async def back_to_payment_methods(callback: CallbackQuery):
-    """Возврат к выбору способа оплаты"""
-    tariff_type = callback.data.removeprefix("payment_methods_")
-    
-    text = f"""💳 <b>Оплата подписки</b>
-
-📋 <b>Тариф:</b> {TariffKeyboard.get_tariff_names().get(tariff_type, 'Неизвестный')}
-
-Доступные способы оплаты через YooKassa:
-• Банковские карты (Visa, MasterCard, МИР)
-• СБП (Система быстрых платежей)
-• ЮMoney
-• SberPay
-"""
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=PaymentKeyboard.get_payment_methods(tariff_type),
-        parse_mode="HTML"
-    )
 
 def register_payment_handlers(dp):
     """Регистрация обработчиков платежей"""

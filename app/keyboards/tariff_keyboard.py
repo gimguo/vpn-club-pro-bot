@@ -32,36 +32,6 @@ class TariffKeyboard:
         return keyboard
 
     @staticmethod
-    def get_payment_button(amount: int, tariff_type: str):
-        """Прямые кнопки оплаты без лишнего промежуточного шага"""
-        stars_prices = {
-            "trial": 50,
-            "monthly": 50,
-            "quarterly": 117,
-            "half_yearly": 217,
-            "yearly": 400,
-        }
-        stars_amount = stars_prices.get(tariff_type, 0)
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(
-                    text=f"💳 Карта / СБП — {amount} ₽",
-                    callback_data=f"payment_yookassa_{tariff_type}"
-                )],
-                [InlineKeyboardButton(
-                    text=f"⭐ Telegram Stars — {stars_amount}",
-                    callback_data=f"payment_stars_{tariff_type}"
-                )],
-                [InlineKeyboardButton(
-                    text="⬅️ Назад к тарифам", 
-                    callback_data="back_to_tariffs"
-                )]
-            ]
-        )
-        return keyboard
-
-    @staticmethod
     def get_payment_url_button(payment_url: str):
         """Кнопка с ссылкой на оплату"""
         keyboard = InlineKeyboardMarkup(
@@ -76,13 +46,7 @@ class TariffKeyboard:
     @staticmethod
     def get_checkout_buttons(payment_url: str, amount: int, tariff_type: str):
         """Кнопки оплаты — URL кнопка ведёт прямо на YooKassa."""
-        stars_prices = {
-            "monthly": 50,
-            "quarterly": 117,
-            "half_yearly": 217,
-            "yearly": 400,
-        }
-        stars_amount = stars_prices.get(tariff_type, 0)
+        stars_amount = TariffKeyboard.get_stars_prices().get(tariff_type, 0)
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -99,6 +63,17 @@ class TariffKeyboard:
             ]
         )
         return keyboard
+
+    @staticmethod
+    def get_stars_prices() -> dict[str, int]:
+        """Единый источник цен в Telegram Stars"""
+        return {
+            "trial": 50,
+            "monthly": 50,
+            "quarterly": 117,
+            "half_yearly": 217,
+            "yearly": 400,
+        }
 
     @staticmethod
     def get_tariff_names():

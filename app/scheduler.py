@@ -1,13 +1,19 @@
+import asyncio
+import logging
+from datetime import datetime, timedelta
+
+import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+
 from app.services.subscription_service import SubscriptionService
 from app.services.user_service import UserService
 from app.database import AsyncSessionLocal
 from config import settings
-import asyncio
-from datetime import datetime, timedelta
-import pytz
+
+logger = logging.getLogger(__name__)
+
 
 class NotificationScheduler:
     def __init__(self, bot):
@@ -60,8 +66,8 @@ class NotificationScheduler:
                     existing_jobs = [job for job in self.scheduler.get_jobs() if job.id.startswith(f"expiring_notification_{user_id}_")]
                     for job in existing_jobs:
                         self.scheduler.remove_job(job.id)
-                except:
-                    pass
+                except Exception as exc:
+                    logger.debug(f"Could not remove old notification jobs for user {user_id}: {exc}")
                 
                 # Добавляем новое уведомление
                 self.scheduler.add_job(
@@ -71,10 +77,10 @@ class NotificationScheduler:
                     id=job_id
                 )
                 
-                print(f"📅 Запланировано уведомление для пользователя {user_id} на {notification_date}")
+                logger.info(f"📅 Запланировано уведомление для пользователя {user_id} на {notification_date}")
                 
         except Exception as e:
-            print(f"Ошибка при планировании уведомления: {e}")
+            logger.error(f"Ошибка при планировании уведомления: {e}")
             
     async def send_expiring_notification(self, user_id: int):
         """Отправка уведомления о скором истечении подписки"""
@@ -95,10 +101,10 @@ class NotificationScheduler:
                         text,
                         parse_mode="HTML"
                     )
-                    print(f"📤 Отправлено персональное уведомление пользователю {user.telegram_id}")
+                    logger.info(f"📤 Отправлено персональное уведомление пользователю {user.telegram_id}")
                     
         except Exception as e:
-            print(f"Ошибка отправки персонального уведомления пользователю {user_id}: {e}")
+            logger.error(f"Ошибка отправки персонального уведомления пользователю {user_id}: {e}")
         
     async def check_expiring_subscriptions(self):
         """Проверка подписок, истекающих через 3 дня"""
@@ -113,7 +119,7 @@ class NotificationScheduler:
                         # Получаем пользователя через UserService для избежания проблем с async
                         user = await user_service.get_user_by_id(subscription.user_id)
                         if not user:
-                            print(f"Пользователь {subscription.user_id} не найден")
+                            logger.warning(f"Пользователь {subscription.user_id} не найден")
                             continue
                         
                         text = """⚠️ <b>Срок действия вашего ключа подходит к концу!</b>
@@ -127,13 +133,13 @@ class NotificationScheduler:
                             text,
                             parse_mode="HTML"
                         )
-                        print(f"📤 Отправлено уведомление пользователю {user.telegram_id}")
+                        logger.info(f"📤 Отправлено уведомление пользователю {user.telegram_id}")
                         
                     except Exception as e:
-                        print(f"Ошибка отправки уведомления пользователю {subscription.user_id}: {e}")
+                        logger.error(f"Ошибка отправки уведомления пользователю {subscription.user_id}: {e}")
                         
         except Exception as e:
-            print(f"Ошибка при проверке истекающих подписок: {e}")
+            logger.error(f"Ошибка при проверке истекающих подписок: {e}")
             
     async def check_expired_subscriptions(self):
         """Проверка и деактивация истекших подписок"""
@@ -148,7 +154,7 @@ class NotificationScheduler:
                         # Получаем пользователя через UserService для избежания проблем с async
                         user = await user_service.get_user_by_id(subscription.user_id)
                         if not user:
-                            print(f"Пользователь {subscription.user_id} не найден")
+                            logger.warning(f"Пользователь {subscription.user_id} не найден")
                             continue
                         
                         # Уведомляем пользователя
@@ -166,13 +172,13 @@ class NotificationScheduler:
                         
                         # Деактивируем подписку
                         await subscription_service.deactivate_subscription(subscription)
-                        print(f"✅ Деактивирована подписка {subscription.id} пользователя {user.telegram_id}")
+                        logger.info(f"✅ Деактивирована подписка {subscription.id} пользователя {user.telegram_id}")
                         
                     except Exception as e:
-                        print(f"Ошибка обработки истекшей подписки {subscription.id}: {e}")
+                        logger.error(f"Ошибка обработки истекшей подписки {subscription.id}: {e}")
                         
         except Exception as e:
-            print(f"Ошибка при проверке истекших подписок: {e}")
+            logger.error(f"Ошибка при проверке истекших подписок: {e}")
             
     async def send_broadcast_message(self, message_text: str):
         """Отправка массового сообщения всем активным пользователям"""
@@ -197,14 +203,14 @@ class NotificationScheduler:
                         
                     except Exception as e:
                         failed_count += 1
-                        print(f"Не удалось отправить сообщение пользователю {user.telegram_id}: {e}")
+                        logger.error(f"Не удалось отправить сообщение пользователю {user.telegram_id}: {e}")
                 
-                print(f"Рассылка завершена. Отправлено: {sent_count}, Ошибок: {failed_count}")
+                logger.info(f"Рассылка завершена. Отправлено: {sent_count}, Ошибок: {failed_count}")
                 return sent_count, failed_count
                 
         except Exception as e:
-            print(f"Ошибка при массовой рассылке: {e}")
-            return 0, 0 
+            logger.error(f"Ошибка при массовой рассылке: {e}")
+            return 0, 0
             
     async def process_webhook_files(self):
         """Обработка webhook файлов из /tmp/webhooks"""
@@ -222,7 +228,7 @@ class NotificationScheduler:
             if not webhook_files:
                 return
                 
-            print(f"🔍 Найдено {len(webhook_files)} webhook файлов для обработки")
+            logger.info(f"🔍 Найдено {len(webhook_files)} webhook файлов для обработки")
             
             async with AsyncSessionLocal() as session:
                 from app.services.payment_service import PaymentService
@@ -246,26 +252,26 @@ class NotificationScheduler:
                         
                         # ── Обрабатываем ТОЛЬКО succeeded ──
                         if event_type != "payment.succeeded":
-                            print(f"⏭️ Пропускаем webhook {event_type} для платежа {payment_id}")
+                            logger.info(f"⏭️ Пропускаем webhook {event_type} для платежа {payment_id}")
                             if event_type == "payment.canceled":
                                 await payment_service.update_payment_status(payment_id, "canceled")
-                                print(f"❌ Payment {payment_id} marked as canceled")
+                                logger.info(f"❌ Payment {payment_id} marked as canceled")
                             os.remove(file_path)
-                            print(f"🗑️ Webhook file removed: {webhook_file}")
+                            logger.info(f"🗑️ Webhook file removed: {webhook_file}")
                             continue
                         
                         # Проверяем, не обрабатывался ли этот платеж уже
                         if payment_id in self.processed_payments:
-                            print(f"💳 Платеж {payment_id} уже был обработан, пропускаем")
+                            logger.info(f"💳 Платеж {payment_id} уже был обработан, пропускаем")
                             os.remove(file_path)
                             continue
                         
-                        print(f"💳 Обрабатываем succeeded webhook для платежа: {payment_id}")
+                        logger.info(f"💳 Обрабатываем succeeded webhook для платежа: {payment_id}")
                         
                         # Дополнительная проверка через API YooKassa
                         is_really_paid = await payment_service.verify_payment(payment_id)
                         if not is_really_paid:
-                            print(f"⚠️ Payment {payment_id} не подтверждён через API YooKassa, пропускаем")
+                            logger.warning(f"⚠️ Payment {payment_id} не подтверждён через API YooKassa, пропускаем")
                             os.remove(file_path)
                             continue
                         
@@ -273,7 +279,7 @@ class NotificationScheduler:
                         payment = await payment_service.update_payment_status(payment_id, "succeeded")
                         
                         if payment:
-                            print(f"✅ Payment {payment_id} marked as succeeded (verified)")
+                            logger.info(f"✅ Payment {payment_id} marked as succeeded (verified)")
                             
                             # Создаем подписку
                             subscription = await subscription_service.create_subscription(
@@ -325,17 +331,17 @@ class NotificationScheduler:
                                     parse_mode="HTML"
                                 )
                                 
-                                print(f"📱 Notification sent to user {user.telegram_id}")
+                                logger.info(f"📱 Notification sent to user {user.telegram_id}")
                             
                             # Добавляем в список обработанных
                             self.processed_payments.add(payment_id)
                         
                         # Удаляем обработанный файл
                         os.remove(file_path)
-                        print(f"🗑️ Webhook file processed and removed: {webhook_file}")
+                        logger.info(f"🗑️ Webhook file processed and removed: {webhook_file}")
                         
                     except Exception as e:
-                        print(f"❌ Ошибка обработки webhook файла {webhook_file}: {e}")
+                        logger.error(f"❌ Ошибка обработки webhook файла {webhook_file}: {e}")
                         
         except Exception as e:
-            print(f"❌ Ошибка при обработке webhook файлов: {e}") 
+            logger.error(f"❌ Ошибка при обработке webhook файлов: {e}") 

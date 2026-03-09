@@ -14,8 +14,9 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Защита от двойного клика: per-user lock при создании подписки
+# Защита от двойного клика: per-user lock при создании подписки (ограничено 500 записей)
 _subscription_locks: dict[int, asyncio.Lock] = {}
+_MAX_LOCKS = 500
 
 
 # ─── Главное меню ──────────────────────────────────────────────
@@ -116,6 +117,9 @@ async def one_tap_trial(message: Message):
     # Per-user lock: защита от двойного клика
     user_tg_id = message.from_user.id
     if user_tg_id not in _subscription_locks:
+        # Предотвращаем утечку памяти: очищаем незалоченные записи
+        if len(_subscription_locks) >= _MAX_LOCKS:
+            _subscription_locks.clear()
         _subscription_locks[user_tg_id] = asyncio.Lock()
     
     if _subscription_locks[user_tg_id].locked():
@@ -397,11 +401,17 @@ async def check_key(message: Message):
         info = await subscription_service.get_subscription_info(active_sub)
         tariff_names = TariffKeyboard.get_tariff_names()
         
+        is_unlimited = info['tariff_type'] == 'unlimited'
+
         text = f"""✅ <b>Ваша подписка активна</b>
 
-📦 Тариф: {tariff_names.get(info['tariff_type'], 'VPN')}
-📅 До: {info['end_date'].strftime('%d.%m.%Y')}
-⏰ Осталось: {info['remaining_days']} дн."""
+📦 Тариф: {tariff_names.get(info['tariff_type'], 'VPN')}"""
+
+        if is_unlimited:
+            text += "\n♾ Срок: бессрочно"
+        else:
+            text += f"\n📅 До: {info['end_date'].strftime('%d.%m.%Y')}"
+            text += f"\n⏰ Осталось: {info['remaining_days']} дн."
 
         if info.get('traffic_limit_gb'):
             text += f"\n📊 Трафик: {info['traffic_used_gb']:.1f} / {info['traffic_limit_gb']} ГБ"
